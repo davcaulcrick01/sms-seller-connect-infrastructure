@@ -62,9 +62,7 @@ variable "project_name" {
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
-  default = {
-    ManagedBy = "Terraform"
-  }
+  default     = {}
 }
 
 # S3 Bucket Configuration
@@ -87,9 +85,7 @@ variable "s3_force_destroy" {
 variable "common_tags" {
   description = "Common tags to be applied to all resources"
   type        = map(string)
-  default = {
-    ManagedBy = "Terraform"
-  }
+  default     = {}
 }
 
 variable "ecr_repo_url" {
