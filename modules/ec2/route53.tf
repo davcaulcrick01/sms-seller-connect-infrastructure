@@ -15,7 +15,7 @@ resource "aws_route53_zone" "main" {
   )
 }
 
-# SMS Frontend - Main domain (sms.greyzoneapps.com)
+# #SMS Frontend - Main domain (sms.greyzoneapps.com)
 resource "aws_route53_record" "sms_frontend" {
   zone_id = aws_route53_zone.main.zone_id
   name    = var.sms_frontend_domain
