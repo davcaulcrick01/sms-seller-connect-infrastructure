@@ -127,7 +127,7 @@ resource "aws_cloudwatch_metric_alarm" "app_health_check" {
   alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
 
   dimensions = {
-    LoadBalancer = var.alb_dns_name
+    LoadBalancer = aws_lb.main.arn_suffix
   }
 
   tags = var.tags
@@ -337,11 +337,9 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_agent_policy" {
 }
 
 # Instance Profile for CloudWatch Agent
-resource "aws_iam_instance_profile" "cloudwatch_agent_profile" {
+# Use existing CloudWatch Agent instance profile
+data "aws_iam_instance_profile" "cloudwatch_agent_profile" {
   name = "CloudWatchAgentServerProfile"
-  role = aws_iam_role.sms_cloudwatch_agent_role.name
-
-  tags = var.tags
 }
 
 ########################################
@@ -350,9 +348,10 @@ resource "aws_iam_instance_profile" "cloudwatch_agent_profile" {
 
 # Store CloudWatch Agent config in Parameter Store
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
-  name = "/car-rental/cloudwatch-agent-config"
-  type = "String"
-  value = jsonencode({
+  name      = "/car-rental/cloudwatch-agent-config"
+  type      = "String"
+  overwrite = true
+  value     = jsonencode({
     agent = {
       metrics_collection_interval = 60
       run_as_user                 = "root"

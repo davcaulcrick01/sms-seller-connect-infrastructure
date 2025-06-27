@@ -2,17 +2,9 @@
 # EC2 Instance for Multi-App Container Host
 ########################################
 
-# Create key pair for EC2 access
-resource "aws_key_pair" "main" {
-  key_name   = "${local.name_prefix}-key"
-  public_key = var.ssh_public_key
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "${local.name_prefix}-key-pair"
-    }
-  )
+# Use existing key pair for EC2 access
+data "aws_key_pair" "existing_key" {
+  key_name = "car-rental-key"
 }
 
 # Note: EIP not needed since we use ALB for public access
@@ -21,7 +13,7 @@ resource "aws_key_pair" "main" {
 resource "aws_instance" "sms_seller_connect_ec2" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  key_name               = aws_key_pair.main.key_name
+  key_name               = data.aws_key_pair.existing_key.key_name
   subnet_id              = data.aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   iam_instance_profile   = data.aws_iam_instance_profile.ec2_profile.name
