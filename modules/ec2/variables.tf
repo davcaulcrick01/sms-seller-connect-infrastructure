@@ -79,6 +79,7 @@ variable "s3_acl" {
 variable "s3_force_destroy" {
   description = "Force destroy the S3 bucket (true for non-empty buckets)"
   type        = bool
+  default     = false
 }
 
 # Common Tags
@@ -279,6 +280,7 @@ variable "bucket_acl" {
 variable "use_default_vpc" {
   description = "Whether to use the default VPC"
   type        = bool
+  default     = false
 }
 
 variable "admin_ssh_cidr" {
@@ -318,6 +320,7 @@ variable "sms_api_domain" {
 variable "enable_carrental_domain" {
   description = "Whether to create car rental domain records"
   type        = bool
+  default     = false
 }
 
 variable "carrental_frontend_domain" {
@@ -343,6 +346,7 @@ variable "flask_secret_key" {
 variable "use_postgres" {
   description = "Whether to use PostgreSQL"
   type        = bool
+  default     = false
 }
 
 variable "database_url" {
@@ -416,14 +420,14 @@ variable "ngrok_subdomain" {
 variable "start_ngrok" {
   description = "Whether to start ngrok"
   type        = bool
-  default     = true
+  default     = false
 }
 
 # Application Settings
 variable "debug" {
   description = "Debug mode"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "log_level" {
