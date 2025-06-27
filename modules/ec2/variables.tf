@@ -424,7 +424,7 @@ variable "debug" {
   description = "Debug mode"
   type        = bool
   default     = true
-  }
+}
 
 variable "log_level" {
   description = "Log level"
