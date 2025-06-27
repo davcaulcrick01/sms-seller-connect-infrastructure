@@ -27,12 +27,12 @@ data "aws_subnets" "public" {
     name   = "vpc-id"
     values = [data.aws_vpc.selected.id]
   }
-  
+
   filter {
     name   = "state"
     values = ["available"]
   }
-  
+
   # Filter for public subnets (those with internet gateway route)
   filter {
     name   = "route-table-association.route-table.route.gateway-id"
