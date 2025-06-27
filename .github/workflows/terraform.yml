@@ -725,9 +725,26 @@ jobs:
     runs-on: ubuntu-latest
     needs: [format, validate, plan]
     if: |
-      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
     
     steps:
+    - name: Auto-Deploy Notification
+      run: |
+        echo "🚀 AUTO-DEPLOYMENT TRIGGERED!"
+        echo "=============================="
+        if [ "${{ github.event.inputs.action }}" = "plan" ]; then
+          echo "🎯 Reason: Plan detected changes - proceeding to automatic deployment"
+        elif [ "${{ github.event_name }}" = "push" ]; then
+          echo "🎯 Reason: Push to main branch with infrastructure changes"
+        else
+          echo "🎯 Reason: Manual apply action requested"
+        fi
+        echo "🔧 Environment: ${{ env.ENVIRONMENT }}"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo ""
+
     - name: Checkout
       uses: actions/checkout@v4
 
