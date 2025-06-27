@@ -301,50 +301,49 @@ jobs:
       run: |
         echo "🔧 Setting Terraform environment variables from GitHub secrets..."
         
-        # Set ALL variables as environment variables for Terraform
-        cat > terraform.env << 'EOF'
-        # Basic Configuration
+        # Set environment variables directly instead of using a file to avoid shell escaping issues
+        echo "📝 Setting basic configuration variables..."
         export TF_VAR_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_environment="${{ env.ENVIRONMENT }}"
         export TF_VAR_project_name="${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
         
-        # EC2 Configuration
+        echo "🖥️ Setting EC2 configuration variables..."
         export TF_VAR_ami_id="${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}"
         export TF_VAR_instance_type="${{ vars.INSTANCE_TYPE || 't2.micro' }}"
         export TF_VAR_key_name="${{ vars.KEY_NAME || 'sms-seller-connect-key' }}"
         export TF_VAR_instance_name="${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}"
         
-        # Networking Configuration
+        echo "🌐 Setting networking configuration variables..."
         export TF_VAR_use_default_vpc=${{ vars.USE_DEFAULT_VPC || 'true' }}
         export TF_VAR_vpc_name="${{ vars.VPC_NAME || 'Grey-VPC' }}"
         export TF_VAR_subnet_name="${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}"
         export TF_VAR_subnet_name_b="${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}"
         export TF_VAR_admin_ssh_cidr="${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}"
         
-        # S3 Configuration
+        echo "🪣 Setting S3 configuration variables..."
         export TF_VAR_bucket_name="${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
         export TF_VAR_s3_bucket_name="${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
         export TF_VAR_s3_acl="${{ vars.S3_ACL || 'private' }}"
         export TF_VAR_bucket_acl="${{ vars.S3_ACL || 'private' }}"
         export TF_VAR_s3_force_destroy=${{ vars.S3_FORCE_DESTROY || 'false' }}
         
-        # Container Configuration
+        echo "🐳 Setting container configuration variables..."
         export TF_VAR_ecr_repo_url="${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}"
         export TF_VAR_container_tag="${{ vars.CONTAINER_TAG || 'latest' }}"
         export TF_VAR_app_port="${{ vars.APP_PORT || '8900' }}"
         export TF_VAR_backend_image="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
         export TF_VAR_frontend_image="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
         
-        # Domain Configuration
+        echo "🌍 Setting domain configuration variables..."
         export TF_VAR_domain_zone_name="${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}"
         export TF_VAR_domain_name="${{ vars.DOMAIN_NAME || 'typerelations.com' }}"
         export TF_VAR_sms_frontend_domain="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         export TF_VAR_sms_api_domain="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         
-        # Monitoring
+        echo "📧 Setting monitoring variables..."
         export TF_VAR_alert_email="${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
         
-        # Sensitive variables (from secrets)
+        echo "🔐 Setting sensitive variables from secrets..."
         export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
         export TF_VAR_db_host="${{ secrets.DB_HOST }}"
         export TF_VAR_db_user="${{ secrets.DB_USER }}"
@@ -359,63 +358,55 @@ jobs:
         export TF_VAR_ngrok_auth_token="${{ secrets.NGROK_AUTH_TOKEN }}"
         export TF_VAR_hot_lead_sms_recipients="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
         
-        # Application Configuration
+        echo "🔗 Setting application configuration variables..."
         export TF_VAR_database_url="postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast"
         export TF_VAR_twilio_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms"
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         
-        # Additional variables from GitHub variables
-        export TF_VAR_db_port="${{ vars.DB_PORT }}"
-        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        echo "⚙️ Setting additional configuration variables..."
+        export TF_VAR_db_port="${{ vars.DB_PORT || '5437' }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME || 'sms_blast' }}"
         export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
-        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
-        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
-        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE || '0.7' }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
         export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
         export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
         export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_use_postgres=${{ vars.USE_POSTGRES || 'true' }}
-        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
-        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT || '8900' }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT || '3000' }}"
         export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
-        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
-        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT || '4040' }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL || '' }}"
         export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
         export TF_VAR_start_ngrok=${{ vars.START_NGROK || 'true' }}
         export TF_VAR_debug=${{ vars.DEBUG || 'true' }}
-        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL || 'INFO' }}"
         export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
-        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
-        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
-        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
-        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
-        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
-        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
-        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST || '200' }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS || '30' }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
         export TF_VAR_enable_carrental_domain=false
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Tags now have defaults in variables.tf - no JSON export needed
-        # Explicitly unset any tag variables that might be set from GitHub secrets/variables
-        unset TF_VAR_tags TF_VAR_common_tags
-        
-        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        echo "🏗️ Setting dynamic/runtime variables..."
         export TF_VAR_subnet_id=""
         export TF_VAR_route53_zone_id=""
         export TF_VAR_alb_dns_name=""
         export TF_VAR_alb_zone_id=""
-        EOF
         
-        # Source the environment file
-        source terraform.env
-        
-        # Explicitly unset any problematic tag variables again after sourcing
-        unset TF_VAR_tags TF_VAR_common_tags
+        # Explicitly unset any problematic tag variables
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
         
         echo "✅ Terraform environment variables configured"
         echo "📊 Environment: ${{ env.ENVIRONMENT }}"
@@ -441,11 +432,8 @@ jobs:
       run: |
         echo "📋 Creating Terraform plan for ${{ env.ENVIRONMENT }} environment..."
         
-        # Source environment variables
-        source terraform.env
-        
         # Explicitly unset problematic tag variables before planning
-        unset TF_VAR_tags TF_VAR_common_tags
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
         
         # Debug: Show some environment variables are set
         echo "🔍 DEBUG: Checking key variables..."
@@ -640,8 +628,7 @@ jobs:
         echo "🔧 Setting up environment variables for apply..."
         
         # Recreate environment variables (they don't persist between steps)
-        cat > terraform.env << 'EOF'
-        # Basic Configuration
+        echo "📝 Setting basic configuration variables..."
         export TF_VAR_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_environment="${{ env.ENVIRONMENT }}"
         export TF_VAR_project_name="${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
@@ -669,7 +656,8 @@ jobs:
         export TF_VAR_sms_frontend_domain="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         export TF_VAR_sms_api_domain="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_alert_email="${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
-        # Secrets
+        
+        echo "🔐 Setting secrets..."
         export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
         export TF_VAR_db_host="${{ secrets.DB_HOST }}"
         export TF_VAR_db_user="${{ secrets.DB_USER }}"
@@ -688,49 +676,49 @@ jobs:
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         
-        # Additional variables from GitHub variables
-        export TF_VAR_db_port="${{ vars.DB_PORT }}"
-        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        echo "⚙️ Setting additional variables..."
+        export TF_VAR_db_port="${{ vars.DB_PORT || '5437' }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME || 'sms_blast' }}"
         export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
-        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
-        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
-        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE || '0.7' }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
         export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
         export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
         export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_use_postgres=${{ vars.USE_POSTGRES || 'true' }}
-        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
-        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT || '8900' }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT || '3000' }}"
         export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
-        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
-        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT || '4040' }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL || '' }}"
         export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
         export TF_VAR_start_ngrok=${{ vars.START_NGROK || 'true' }}
         export TF_VAR_debug=${{ vars.DEBUG || 'true' }}
-        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL || 'INFO' }}"
         export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
-        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
-        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
-        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
-        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
-        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
-        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
-        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST || '200' }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS || '30' }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
         export TF_VAR_enable_carrental_domain=false
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Tags now have defaults in variables.tf - no JSON export needed
-        
-        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        echo "🏗️ Setting dynamic/runtime variables..."
         export TF_VAR_subnet_id=""
         export TF_VAR_route53_zone_id=""
         export TF_VAR_alb_dns_name=""
         export TF_VAR_alb_zone_id=""
-        EOF
+        
+        # Explicitly unset any problematic tag variables
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
 
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
@@ -738,11 +726,8 @@ jobs:
         echo "🚀 Applying Terraform changes for ${{ env.ENVIRONMENT }} environment..."
         echo "📍 Backend: s3://${{ env.STATE_BUCKET }}/${{ env.STATE_KEY }}"
         
-        # Source environment variables
-        source terraform.env
-        
         # Explicitly unset problematic tag variables before applying
-        unset TF_VAR_tags TF_VAR_common_tags
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
         
         if [ -f "tfplan" ]; then
           echo "📋 Applying saved plan..."
@@ -1021,8 +1006,7 @@ jobs:
         echo "🔧 Setting up environment variables for destroy..."
         
         # Create environment variables for destroy
-        cat > terraform.env << 'EOF'
-        # Basic Configuration
+        echo "📝 Setting basic configuration variables..."
         export TF_VAR_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_environment="${{ env.ENVIRONMENT }}"
         export TF_VAR_project_name="${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
@@ -1050,7 +1034,8 @@ jobs:
         export TF_VAR_sms_frontend_domain="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         export TF_VAR_sms_api_domain="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_alert_email="${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
-        # Secrets
+        
+        echo "🔐 Setting secrets..."
         export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
         export TF_VAR_db_host="${{ secrets.DB_HOST }}"
         export TF_VAR_db_user="${{ secrets.DB_USER }}"
@@ -1069,60 +1054,57 @@ jobs:
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
         
-        # Additional variables from GitHub variables
-        export TF_VAR_db_port="${{ vars.DB_PORT }}"
-        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        echo "⚙️ Setting additional variables..."
+        export TF_VAR_db_port="${{ vars.DB_PORT || '5437' }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME || 'sms_blast' }}"
         export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
-        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
-        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
-        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE || '0.7' }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
         export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
         export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
         export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
         export TF_VAR_use_postgres=${{ vars.USE_POSTGRES || 'true' }}
-        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
-        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT || '8900' }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT || '3000' }}"
         export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
-        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
-        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT || '4040' }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL || '' }}"
         export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
         export TF_VAR_start_ngrok=${{ vars.START_NGROK || 'true' }}
         export TF_VAR_debug=${{ vars.DEBUG || 'true' }}
-        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL || 'INFO' }}"
         export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
-        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
-        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
-        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
-        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
-        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
-        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
-        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST || '200' }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS || '30' }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
         export TF_VAR_enable_carrental_domain=false
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Tags now have defaults in variables.tf - no JSON export needed
-        
-        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        echo "🏗️ Setting dynamic/runtime variables..."
         export TF_VAR_subnet_id=""
         export TF_VAR_route53_zone_id=""
         export TF_VAR_alb_dns_name=""
         export TF_VAR_alb_zone_id=""
-        EOF
+        
+        # Explicitly unset any problematic tag variables
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
 
     - name: Show Resources to be Destroyed
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🔍 Resources that will be destroyed in ${{ env.ENVIRONMENT }}:"
         
-        # Source environment variables
-        source terraform.env
-        
         # Explicitly unset problematic tag variables before planning destroy
-        unset TF_VAR_tags TF_VAR_common_tags
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
         
         terraform state list
         echo ""
@@ -1134,11 +1116,8 @@ jobs:
       run: |
         echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
         
-        # Source environment variables
-        source terraform.env
-        
         # Explicitly unset problematic tag variables before destroying
-        unset TF_VAR_tags TF_VAR_common_tags
+        unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
         
         terraform destroy -auto-approve
         echo "🗑️ Destruction completed!"
