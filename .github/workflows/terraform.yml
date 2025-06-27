@@ -400,9 +400,9 @@ jobs:
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) - use single line format with proper escaping
-        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
-        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        # Tags now have defaults in variables.tf - no JSON export needed
+        # Explicitly unset any tag variables that might be set from GitHub secrets/variables
+        unset TF_VAR_tags TF_VAR_common_tags
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
@@ -414,9 +414,26 @@ jobs:
         # Source the environment file
         source terraform.env
         
+        # Explicitly unset any problematic tag variables again after sourcing
+        unset TF_VAR_tags TF_VAR_common_tags
+        
         echo "✅ Terraform environment variables configured"
         echo "📊 Environment: ${{ env.ENVIRONMENT }}"
         echo "🔒 Secrets loaded as TF_VAR_* environment variables"
+        
+        # Debug: Check if problematic variables are still set
+        echo "🔍 DEBUG: Checking for problematic tag variables..."
+        if [ -n "${TF_VAR_tags:-}" ]; then
+          echo "⚠️ WARNING: TF_VAR_tags is set: ${TF_VAR_tags}"
+        else
+          echo "✅ TF_VAR_tags is not set (good)"
+        fi
+        
+        if [ -n "${TF_VAR_common_tags:-}" ]; then
+          echo "⚠️ WARNING: TF_VAR_common_tags is set: ${TF_VAR_common_tags}"
+        else
+          echo "✅ TF_VAR_common_tags is not set (good)"
+        fi
 
     - name: Terraform Plan
       id: plan
@@ -427,12 +444,33 @@ jobs:
         # Source environment variables
         source terraform.env
         
+        # Explicitly unset problematic tag variables before planning
+        unset TF_VAR_tags TF_VAR_common_tags
+        
         # Debug: Show some environment variables are set
         echo "🔍 DEBUG: Checking key variables..."
         echo "Environment: $TF_VAR_environment"
         echo "Project: $TF_VAR_project_name"
         echo "Region: $TF_VAR_region"
         
+        # Debug: Verify tag variables are not set
+        echo "🔍 DEBUG: Verifying tag variables are not set..."
+        if [ -n "${TF_VAR_tags:-}" ]; then
+          echo "❌ ERROR: TF_VAR_tags is still set: ${TF_VAR_tags}"
+          echo "🔧 Unsetting TF_VAR_tags..."
+          unset TF_VAR_tags
+        else
+          echo "✅ TF_VAR_tags is not set (good)"
+        fi
+        
+        if [ -n "${TF_VAR_common_tags:-}" ]; then
+          echo "❌ ERROR: TF_VAR_common_tags is still set: ${TF_VAR_common_tags}"
+          echo "🔧 Unsetting TF_VAR_common_tags..."
+          unset TF_VAR_common_tags
+        else
+          echo "✅ TF_VAR_common_tags is not set (good)"
+        fi
+
         # Create plan with detailed exit codes and disable input prompts
         echo "🚀 Starting terraform plan with timeout protection and auto-retry..."
         
@@ -685,9 +723,7 @@ jobs:
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) - use single line format with proper escaping
-        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
-        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        # Tags now have defaults in variables.tf - no JSON export needed
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
@@ -704,6 +740,9 @@ jobs:
         
         # Source environment variables
         source terraform.env
+        
+        # Explicitly unset problematic tag variables before applying
+        unset TF_VAR_tags TF_VAR_common_tags
         
         if [ -f "tfplan" ]; then
           echo "📋 Applying saved plan..."
@@ -1065,9 +1104,7 @@ jobs:
         export TF_VAR_carrental_frontend_domain=""
         export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) - use single line format with proper escaping
-        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
-        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        # Tags now have defaults in variables.tf - no JSON export needed
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
@@ -1084,6 +1121,9 @@ jobs:
         # Source environment variables
         source terraform.env
         
+        # Explicitly unset problematic tag variables before planning destroy
+        unset TF_VAR_tags TF_VAR_common_tags
+        
         terraform state list
         echo ""
         echo "📋 Destroy plan:"
@@ -1096,6 +1136,9 @@ jobs:
         
         # Source environment variables
         source terraform.env
+        
+        # Explicitly unset problematic tag variables before destroying
+        unset TF_VAR_tags TF_VAR_common_tags
         
         terraform destroy -auto-approve
         echo "🗑️ Destruction completed!"
