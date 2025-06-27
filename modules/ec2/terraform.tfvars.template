@@ -1,0 +1,152 @@
+########################################
+# SMS Seller Connect EC2 Module Configuration Template
+# Copy this file to terraform.tfvars and fill in your actual values
+########################################
+
+# Basic Configuration
+region       = "us-east-1"
+environment  = "prod"
+project_name = "sms-seller-connect"
+
+# EC2 Configuration
+ami_id        = "ami-0c02fb55956c7d316"  # Amazon Linux 2023
+instance_type = "t2.micro"
+key_name      = "your-key-name"
+instance_name = "sms-seller-connect"
+
+# Networking Configuration
+use_default_vpc = false
+vpc_name        = "Grey-VPC"
+subnet_name     = "Grey-private-subnet"
+subnet_name_b   = "Grey-public-subnet"
+subnet_id       = ""  # Will be determined by data source
+admin_ssh_cidr  = "0.0.0.0/0"  # Update to your IP for security
+
+# SSH Configuration
+ssh_public_key = "YOUR_SSH_PUBLIC_KEY_HERE"
+
+# S3 Configuration
+bucket_name        = "sms-seller-connect-bucket"
+s3_bucket_name     = "sms-seller-connect-bucket"
+s3_acl             = "private"
+bucket_acl         = "private"
+s3_force_destroy   = false
+
+# Container Configuration
+ecr_repo_url   = "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend"
+container_tag  = "latest"
+app_port       = "8900"
+
+# Docker Images
+backend_image  = "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+frontend_image = "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+
+# Domain Configuration
+domain_zone_name    = "typerelations.com"
+domain_name         = "typerelations.com"
+sms_frontend_domain = "sms.typerelations.com"
+sms_api_domain      = "api.sms.typerelations.com"
+
+# Route53 Configuration (will be populated by outputs)
+route53_zone_id = ""  # Will be determined by data source
+alb_dns_name    = ""  # Will be determined by ALB
+alb_zone_id     = ""  # Will be determined by ALB
+
+# Optional Car Rental domains (disabled for now)
+enable_carrental_domain   = false
+carrental_frontend_domain = "carrental.greyzoneapps.com"
+carrental_api_domain      = "api.carrental.greyzoneapps.com"
+
+# Monitoring Configuration
+alert_email = "your-email@domain.com"
+
+# Tags
+tags = {
+  Project     = "SMSSellerConnect"
+  Environment = "prod"
+  ManagedBy   = "Terraform"
+  Owner       = "GreyZone"
+}
+
+common_tags = {
+  Project = "SMSSellerConnect"
+  Owner   = "TeamGreyZone"
+}
+
+########################################
+# Application Configuration (from .env)
+########################################
+
+# Database Configuration
+use_postgres  = true
+db_host       = "YOUR_DB_HOST"
+db_port       = "5437"
+db_name       = "sms_blast"
+db_user       = "YOUR_DB_USER"
+db_password   = "YOUR_DB_PASSWORD"
+database_url  = "postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST:5437/sms_blast"
+
+# Application Security
+flask_secret_key = "YOUR_FLASK_SECRET_KEY"
+secret_key       = "YOUR_SECRET_KEY"
+jwt_secret_key   = "YOUR_JWT_SECRET_KEY"
+
+# Twilio Configuration
+twilio_account_sid  = "YOUR_TWILIO_ACCOUNT_SID"
+twilio_auth_token   = "YOUR_TWILIO_AUTH_TOKEN"
+twilio_phone_number = "YOUR_TWILIO_PHONE_NUMBER"
+twilio_webhook_url  = "https://api.sms.typerelations.com/api/webhooks/sms"
+
+# OpenAI Configuration
+openai_api_key     = "YOUR_OPENAI_API_KEY"
+openai_model       = "gpt-4o"
+openai_temperature = "0.3"
+
+# SendGrid Configuration
+sendgrid_api_key    = "YOUR_SENDGRID_API_KEY"
+sendgrid_from_email = "noreply@greyzonesolutions.com"
+
+# AWS Configuration for Application
+aws_access_key_id     = "YOUR_AWS_ACCESS_KEY_ID"
+aws_secret_access_key = "YOUR_AWS_SECRET_ACCESS_KEY"
+aws_region            = "us-east-1"
+aws_default_region    = "us-east-1"
+
+# API Configuration
+api_url      = "http://localhost:8900"
+vite_api_url = "http://localhost:8900"
+backend_url  = "http://localhost:8900"
+frontend_url = "http://localhost:8082"
+backend_port = "8900"
+frontend_port = "8082"
+
+# CORS Configuration
+allowed_origins = "http://localhost:5173,http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083"
+
+# Ngrok Configuration
+ngrok_port       = "8900"
+ngrok_url        = "https://sms-seller-connect.ngrok-free.app"
+ngrok_auth_token = "YOUR_NGROK_AUTH_TOKEN"
+ngrok_subdomain  = ""
+start_ngrok      = true
+
+# Application Settings
+debug     = true
+log_level = "info"
+
+# Hot Lead Configuration
+hot_lead_webhook_url      = "https://api.sms.typerelations.com/api/alerts"
+hot_lead_email_recipients = "admin@greyzonesolutions.com"
+hot_lead_sms_recipients   = "YOUR_HOT_LEAD_SMS_RECIPIENTS"
+
+# Rate Limiting Configuration
+rate_limit_per_minute = "60"
+rate_limit_burst      = "10"
+
+# Session Configuration
+session_timeout_minutes = "60"
+remember_me_days        = "30"
+
+# File Upload Configuration
+max_file_size_mb   = "10"
+allowed_file_types = "pdf,jpg,jpeg,png,doc,docx,csv" 

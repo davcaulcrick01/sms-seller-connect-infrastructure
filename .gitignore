@@ -1,0 +1,45 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+.terraform/
+.terraform.lock.hcl
+
+# Node modules
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Private keys
+*.pem
+*.key
+
+# Backup files
+*.backup
+*~
+
+# Temporary files
+.tmp/
+temp/ # Terraform files with secrets
+**/*.tfvars
+**/*.tfvars.json
+terraform.tfstate*
+.terraform/

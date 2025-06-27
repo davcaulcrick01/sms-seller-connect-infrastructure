@@ -1,0 +1,818 @@
+name: 'SMS Seller Connect - Terraform CI/CD Pipeline'
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+          - format
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  # Terraform Configuration
+  TF_VERSION: '1.5.7'
+  TF_WORKING_DIR: './modules/ec2'
+  
+  # AWS Configuration
+  AWS_REGION: 'us-east-1'
+  AWS_ACCOUNT_ID: '522814698925'
+  
+  # Backend Configuration
+  STATE_BUCKET: 'greyzone-terraform-state'
+  LOCK_TABLE: 'terraform-locks'
+  STATE_KEY: 'sms-seller-connect/ec2/terraform.tfstate'
+  
+  # Application Configuration
+  PROJECT_NAME: 'sms-seller-connect'
+  ECR_REPOSITORY: '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend'
+  DOMAIN_NAME: 'typerelations.com'
+  SMS_FRONTEND_DOMAIN: 'sms.typerelations.com'
+  SMS_API_DOMAIN: 'api.sms.typerelations.com'
+  
+  # Environment Selection
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'prod' }}
+
+jobs:
+  format:
+    name: '🎨 Auto-Format Terraform'
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' || 
+      github.event_name == 'pull_request' || 
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'format')
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Auto-Format Terraform Files
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🎨 Auto-formatting Terraform files..."
+        
+        # Format all terraform files
+        terraform fmt -recursive
+        
+        # Check if any files were changed
+        if [[ -n $(git status --porcelain) ]]; then
+          echo "✅ Terraform files have been auto-formatted"
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Add and commit changes
+          git add .
+          git commit -m "🎨 Auto-format Terraform files [skip ci]"
+          
+          # Push changes
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git push origin HEAD:${{ github.head_ref }}
+          else
+            git push
+          fi
+          
+          echo "📤 Formatted files committed and pushed"
+        else
+          echo "ℹ️ All Terraform files are already properly formatted"
+        fi
+
+  validate:
+    name: '🔍 Validate Terraform'
+    runs-on: ubuntu-latest
+    needs: [format]
+    if: always()
+    
+    outputs:
+      terraform-valid: ${{ steps.validate.outputs.terraform-valid }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Terraform Format Check
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🎨 Verifying Terraform formatting..."
+        terraform fmt -check -recursive
+        echo "✅ All Terraform files are properly formatted"
+
+    - name: Terraform Init
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Initializing Terraform..."
+        terraform init -backend=false
+
+    - name: Terraform Validate
+      id: validate
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "✅ Validating Terraform configuration..."
+        terraform validate
+        echo "terraform-valid=true" >> $GITHUB_OUTPUT
+
+    - name: Security Scan with tfsec
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔒 Running security scan with tfsec..."
+        
+        # Install tfsec
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        
+        # Run tfsec with custom configuration
+        ./tfsec . --format json --out tfsec-results.json || true
+        
+        # Display results
+        if [ -f tfsec-results.json ]; then
+          echo "📊 Security scan results:"
+          cat tfsec-results.json | jq '.results[] | select(.severity == "HIGH" or .severity == "CRITICAL") | {rule_id: .rule_id, severity: .severity, description: .description}' || echo "No high/critical issues found"
+        fi
+
+  plan:
+    name: '📋 Plan Infrastructure'
+    runs-on: ubuntu-latest
+    needs: [format, validate]
+    if: needs.validate.outputs.terraform-valid == 'true'
+    
+    outputs:
+      plan-status: ${{ steps.plan.outputs.status }}
+      has-changes: ${{ steps.plan.outputs.has-changes }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Verify Backend Health
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Verifying backend health..."
+        
+        # Check S3 bucket
+        if aws s3 ls "s3://${{ env.STATE_BUCKET }}" > /dev/null 2>&1; then
+          echo "✅ S3 bucket accessible"
+        else
+          echo "❌ S3 bucket not accessible"
+          exit 1
+        fi
+        
+        # Check DynamoDB table
+        if aws dynamodb describe-table --table-name "${{ env.LOCK_TABLE }}" > /dev/null 2>&1; then
+          echo "✅ DynamoDB lock table exists"
+        else
+          echo "❌ DynamoDB lock table missing"
+          exit 1
+        fi
+
+    - name: Terraform Init with Backend
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Initializing Terraform with S3 backend..."
+        terraform init -reconfigure \
+          -backend-config="bucket=${{ env.STATE_BUCKET }}" \
+          -backend-config="key=${{ env.STATE_KEY }}" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
+          -backend-config="encrypt=true"
+
+    - name: Create GitHub-Based Terraform Variables
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📝 Creating terraform.tfvars from GitHub secrets and variables..."
+        
+        # Create terraform.tfvars from GitHub secrets and variables
+        cat > terraform-github.tfvars << 'EOF'
+        ########################################
+        # SMS Seller Connect Configuration from GitHub
+        ########################################
+        
+        # Basic Configuration
+        region       = "${{ vars.AWS_REGION || 'us-east-1' }}"
+        environment  = "${{ env.ENVIRONMENT }}"
+        project_name = "${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
+        
+        # EC2 Configuration
+        ami_id        = "${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}"
+        instance_type = "${{ vars.INSTANCE_TYPE || 't2.micro' }}"
+        key_name      = "${{ vars.KEY_NAME || 'sms-seller-connect-key' }}"
+        instance_name = "${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}"
+        
+        # Networking Configuration
+        use_default_vpc = ${{ vars.USE_DEFAULT_VPC || 'false' }}
+        vpc_name        = "${{ vars.VPC_NAME || 'Grey-VPC' }}"
+        subnet_name     = "${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}"
+        subnet_name_b   = "${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}"
+        subnet_id       = "${{ vars.SUBNET_ID || '' }}"
+        admin_ssh_cidr  = "${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}"
+        
+        # SSH Configuration
+        ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
+        
+        # S3 Configuration
+        bucket_name        = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
+        s3_bucket_name     = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
+        s3_acl             = "${{ vars.S3_ACL || 'private' }}"
+        bucket_acl         = "${{ vars.S3_ACL || 'private' }}"
+        s3_force_destroy   = ${{ vars.S3_FORCE_DESTROY || 'false' }}
+        
+        # Container Configuration
+        ecr_repo_url   = "${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}"
+        container_tag  = "${{ vars.CONTAINER_TAG || 'latest' }}"
+        app_port       = "${{ vars.APP_PORT || '8900' }}"
+        
+        # Docker Images
+        backend_image  = "${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
+        frontend_image = "${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
+        
+        # Domain Configuration
+        domain_zone_name    = "${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}"
+        domain_name         = "${{ vars.DOMAIN_NAME || 'typerelations.com' }}"
+        sms_frontend_domain = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
+        sms_api_domain      = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        
+        # Route53 Configuration
+        route53_zone_id = "${{ vars.ROUTE53_ZONE_ID || '' }}"
+        alb_dns_name    = "${{ vars.ALB_DNS_NAME || '' }}"
+        alb_zone_id     = "${{ vars.ALB_ZONE_ID || '' }}"
+        
+        # Optional Car Rental domains
+        enable_carrental_domain   = ${{ vars.ENABLE_CARRENTAL_DOMAIN || 'false' }}
+        carrental_frontend_domain = "${{ vars.CARRENTAL_FRONTEND_DOMAIN || 'carrental.greyzoneapps.com' }}"
+        carrental_api_domain      = "${{ vars.CARRENTAL_API_DOMAIN || 'api.carrental.greyzoneapps.com' }}"
+        
+        # Monitoring Configuration
+        alert_email = "${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
+        
+        # Tags
+        tags = {
+          Project     = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
+          Environment = "${{ env.ENVIRONMENT }}"
+          ManagedBy   = "Terraform"
+          Owner       = "${{ vars.OWNER_TAG || 'GreyZone' }}"
+        }
+        
+        common_tags = {
+          Project = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
+          Owner   = "${{ vars.OWNER_TAG || 'TeamGreyZone' }}"
+        }
+        
+        ########################################
+        # Application Configuration (Secrets)
+        ########################################
+        
+        # Database Configuration
+        use_postgres  = ${{ vars.USE_POSTGRES || 'true' }}
+        db_host       = "${{ secrets.DB_HOST }}"
+        db_port       = "${{ vars.DB_PORT || '5437' }}"
+        db_name       = "${{ vars.DB_NAME || 'sms_blast' }}"
+        db_user       = "${{ secrets.DB_USER }}"
+        db_password   = "${{ secrets.DB_PASSWORD }}"
+        database_url  = "postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:${{ vars.DB_PORT || '5437' }}/${{ vars.DB_NAME || 'sms_blast' }}"
+        
+        # Application Security
+        flask_secret_key = "${{ secrets.FLASK_SECRET_KEY }}"
+        secret_key       = "${{ secrets.FLASK_SECRET_KEY }}"
+        jwt_secret_key   = "${{ secrets.JWT_SECRET_KEY }}"
+        
+        # Twilio Configuration
+        twilio_account_sid  = "${{ secrets.TWILIO_ACCOUNT_SID }}"
+        twilio_auth_token   = "${{ secrets.TWILIO_AUTH_TOKEN }}"
+        twilio_phone_number = "${{ secrets.TWILIO_PHONE_NUMBER }}"
+        twilio_webhook_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/webhooks/sms"
+        
+        # OpenAI Configuration
+        openai_api_key     = "${{ secrets.OPENAI_API_KEY }}"
+        openai_model       = "${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
+        openai_temperature = "${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
+        
+        # SendGrid Configuration
+        sendgrid_api_key    = "${{ secrets.SENDGRID_API_KEY }}"
+        sendgrid_from_email = "${{ vars.SENDGRID_FROM_EMAIL || 'noreply@greyzonesolutions.com' }}"
+        
+        # AWS Configuration for Application
+        aws_access_key_id     = "${{ secrets.AWS_ACCESS_KEY_ID }}"
+        aws_secret_access_key = "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        aws_region            = "${{ vars.AWS_REGION || 'us-east-1' }}"
+        aws_default_region    = "${{ vars.AWS_REGION || 'us-east-1' }}"
+        
+        # API Configuration
+        api_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        vite_api_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        backend_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        frontend_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
+        backend_port = "${{ vars.BACKEND_PORT || '8900' }}"
+        frontend_port = "${{ vars.FRONTEND_PORT || '8082' }}"
+        
+        # CORS Configuration
+        allowed_origins = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }},https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        
+        # Ngrok Configuration (Dev only)
+        ngrok_port       = "${{ vars.NGROK_PORT || '8900' }}"
+        ngrok_url        = "${{ vars.NGROK_URL || 'https://sms-seller-connect.ngrok-free.app' }}"
+        ngrok_auth_token = "${{ secrets.NGROK_AUTH_TOKEN }}"
+        ngrok_subdomain  = "${{ vars.NGROK_SUBDOMAIN || '' }}"
+        start_ngrok      = ${{ env.ENVIRONMENT != 'prod' && vars.START_NGROK || 'false' }}
+        
+        # Application Settings
+        debug     = ${{ env.ENVIRONMENT != 'prod' && vars.DEBUG || 'false' }}
+        log_level = "${{ vars.LOG_LEVEL || 'info' }}"
+        
+        # Hot Lead Configuration
+        hot_lead_webhook_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/alerts"
+        hot_lead_email_recipients = "${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'admin@greyzonesolutions.com' }}"
+        hot_lead_sms_recipients   = "${{ secrets.HOT_LEAD_SMS_RECIPIENTS || secrets.TWILIO_PHONE_NUMBER }}"
+        
+        # Rate Limiting Configuration
+        rate_limit_per_minute = "${{ vars.RATE_LIMIT_PER_MINUTE || '60' }}"
+        rate_limit_burst      = "${{ vars.RATE_LIMIT_BURST || '10' }}"
+        
+        # Session Configuration
+        session_timeout_minutes = "${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
+        remember_me_days        = "${{ vars.REMEMBER_ME_DAYS || '30' }}"
+        
+        # File Upload Configuration
+        max_file_size_mb   = "${{ vars.MAX_FILE_SIZE_MB || '10' }}"
+        allowed_file_types = "${{ vars.ALLOWED_FILE_TYPES || 'pdf,jpg,jpeg,png,doc,docx,csv' }}"
+        EOF
+        
+        echo "✅ GitHub-based terraform.tfvars created"
+        echo "📊 Variables summary:"
+        echo "- Environment: ${{ env.ENVIRONMENT }}"
+        echo "- Frontend Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
+        echo "- API Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+
+    - name: Terraform Plan
+      id: plan
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📋 Creating Terraform plan for ${{ env.ENVIRONMENT }} environment..."
+        
+        # Create plan with detailed exit codes
+        set +e
+        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
+        exit_code=$?
+        set -e
+        
+        # Show the plan output
+        cat plan_output.txt
+        
+        echo "🔍 DEBUG: Terraform plan exit code was: $exit_code"
+        
+        # Check for changes in plan output as backup detection method
+        if grep -q "Plan: .* to add\|Plan: .* to change\|Plan: .* to destroy" plan_output.txt; then
+          plan_has_changes=$(grep "Plan: " plan_output.txt | grep -v "Plan: 0 to add, 0 to change, 0 to destroy" | wc -l)
+        else
+          plan_has_changes=0
+        fi
+        
+        echo "🔍 DEBUG: Plan changes detected in output: $plan_has_changes"
+        
+        case $exit_code in
+          0)
+            # Double-check for changes even with exit code 0 (terraform bug workaround)
+            if [ "$plan_has_changes" -gt 0 ]; then
+              echo "⚠️ Exit code 0 but changes detected in plan output - treating as changes"
+              echo "status=changes-detected" >> $GITHUB_OUTPUT
+              echo "has-changes=true" >> $GITHUB_OUTPUT
+              echo "📝 Changes detected (exit code: $exit_code, but plan shows changes)"
+            else
+              echo "status=no-changes" >> $GITHUB_OUTPUT
+              echo "has-changes=false" >> $GITHUB_OUTPUT
+              echo "✅ No changes detected (exit code: $exit_code)"
+            fi
+            ;;
+          1)
+            echo "status=error" >> $GITHUB_OUTPUT
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "❌ Planning failed (exit code: $exit_code)"
+            exit 1
+            ;;
+          2)
+            echo "status=changes-detected" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "📝 Changes detected (exit code: $exit_code)"
+            ;;
+          *)
+            echo "⚠️ Unexpected exit code: $exit_code - treating as changes detected"
+            echo "status=changes-detected" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            ;;
+        esac
+        
+        # Clean up temporary file
+        rm -f plan_output.txt
+
+    - name: Show Plan Summary
+      if: steps.plan.outputs.has-changes == 'true'
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📊 Infrastructure Plan Summary for ${{ env.ENVIRONMENT }}:"
+        terraform show -no-color tfplan | head -50
+        echo ""
+        echo "📈 Resource Changes:"
+        terraform show -json tfplan | jq -r '.resource_changes[] | "\(.change.action | join(",")): \(.address)"' | sort | uniq -c
+
+    - name: Upload Plan
+      if: steps.plan.outputs.has-changes == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-plan-${{ env.ENVIRONMENT }}
+        path: |
+          ${{ env.TF_WORKING_DIR }}/tfplan
+          ${{ env.TF_WORKING_DIR }}/terraform-${{ env.ENVIRONMENT }}.tfvars
+
+  apply:
+    name: '🚀 Deploy Infrastructure'
+    runs-on: ubuntu-latest
+    needs: [format, validate, plan]
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+      (github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment == 'prod') ||
+      (github.ref == 'refs/heads/develop' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment != 'prod')
+    environment: 
+      name: ${{ github.event.inputs.environment || 'prod' }}
+      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Download Plan
+      if: needs.plan.outputs.has-changes == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: terraform-plan-${{ env.ENVIRONMENT }}
+        path: ${{ env.TF_WORKING_DIR }}/
+
+    - name: Terraform Init
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Initializing Terraform..."
+        terraform init -reconfigure \
+          -backend-config="bucket=${{ env.STATE_BUCKET }}" \
+          -backend-config="key=${{ env.STATE_KEY }}" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
+          -backend-config="encrypt=true"
+
+    - name: Terraform Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🚀 Applying Terraform changes for ${{ env.ENVIRONMENT }} environment..."
+        echo "📍 Backend: s3://${{ env.STATE_BUCKET }}/${{ env.STATE_KEY }}"
+        
+        if [ -f "tfplan" ]; then
+          echo "📋 Applying saved plan..."
+          terraform apply -auto-approve tfplan
+        else
+          echo "📋 Creating and applying new plan..."
+          terraform apply -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
+        fi
+        
+        echo "✅ SMS Seller Connect infrastructure deployment completed!"
+
+    - name: Get Infrastructure Outputs
+      id: outputs
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📊 Getting infrastructure outputs..."
+        
+        # Get EC2 outputs
+        if terraform output instance_public_ip > /dev/null 2>&1; then
+          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>/dev/null || echo "N/A")
+          echo "instance_ip=${INSTANCE_IP}" >> $GITHUB_OUTPUT
+          echo "🌐 Instance IP: ${INSTANCE_IP}"
+        fi
+        
+        if terraform output instance_id > /dev/null 2>&1; then
+          INSTANCE_ID=$(terraform output -raw instance_id 2>/dev/null || echo "N/A")
+          echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
+          echo "🆔 Instance ID: ${INSTANCE_ID}"
+        fi
+        
+        # Get ALB outputs
+        if terraform output alb_dns_name > /dev/null 2>&1; then
+          ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "N/A")
+          echo "alb_dns=${ALB_DNS}" >> $GITHUB_OUTPUT
+          echo "🔗 ALB DNS: ${ALB_DNS}"
+        fi
+        
+        # Get S3 outputs
+        if terraform output s3_bucket_name > /dev/null 2>&1; then
+          BUCKET_NAME=$(terraform output -raw s3_bucket_name 2>/dev/null || echo "N/A")
+          echo "bucket_name=${BUCKET_NAME}" >> $GITHUB_OUTPUT
+          echo "🪣 Bucket Name: ${BUCKET_NAME}"
+        fi
+        
+        # Get domain outputs
+        if terraform output sms_frontend_url > /dev/null 2>&1; then
+          FRONTEND_URL=$(terraform output -raw sms_frontend_url 2>/dev/null || echo "N/A")
+          echo "frontend_url=${FRONTEND_URL}" >> $GITHUB_OUTPUT
+          echo "🌐 Frontend URL: ${FRONTEND_URL}"
+        fi
+        
+        if terraform output sms_api_url > /dev/null 2>&1; then
+          API_URL=$(terraform output -raw sms_api_url 2>/dev/null || echo "N/A")
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "🔗 API URL: ${API_URL}"
+        fi
+        
+        # Show all outputs
+        echo "📋 All outputs:"
+        terraform output 2>/dev/null || echo "ℹ️ No outputs available"
+
+    - name: Verify ALB Health
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Verifying ALB deployment..."
+        
+        ALB_DNS="${{ steps.outputs.outputs.alb_dns }}"
+        if [ "$ALB_DNS" != "N/A" ] && [ -n "$ALB_DNS" ]; then
+          echo "🌐 Testing ALB health endpoint..."
+          
+          # Wait for ALB to be ready
+          echo "⏳ Waiting for ALB to be ready..."
+          sleep 120
+          
+          # Test ALB health endpoint
+          if curl -f -m 30 "http://${ALB_DNS}/alb-health" > /dev/null 2>&1; then
+            echo "✅ ALB health check responding"
+          else
+            echo "⚠️ ALB health check not yet responding (may still be starting)"
+          fi
+        else
+          echo "⚠️ No ALB DNS available for verification"
+        fi
+
+    - name: Verify Application Health
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Verifying SMS Seller Connect application..."
+        
+        API_URL="${{ steps.outputs.outputs.api_url }}"
+        if [ "$API_URL" != "N/A" ] && [ -n "$API_URL" ]; then
+          echo "🌐 Testing application health..."
+          
+          # Wait for application to be ready
+          echo "⏳ Waiting for application to be ready..."
+          sleep 180
+          
+          # Test API health endpoint
+          if curl -f -m 30 "${API_URL}/api/health" > /dev/null 2>&1; then
+            echo "✅ SMS Seller Connect API is responding"
+          else
+            echo "⚠️ Application not yet responding (may still be starting)"
+          fi
+          
+          # Test database connection
+          if curl -f -m 30 "${API_URL}/api/test-db" > /dev/null 2>&1; then
+            echo "✅ Database connection verified"
+          else
+            echo "⚠️ Database connection test failed"
+          fi
+        else
+          echo "⚠️ No API URL available for verification"
+        fi
+
+    - name: Verify S3 Deployment
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Verifying S3 deployment..."
+        
+        BUCKET_NAME="${{ steps.outputs.outputs.bucket_name }}"
+        if [ "$BUCKET_NAME" != "N/A" ] && [ -n "$BUCKET_NAME" ]; then
+          echo "🪣 Testing S3 bucket accessibility..."
+          if aws s3 ls "s3://${BUCKET_NAME}" > /dev/null 2>&1; then
+            echo "✅ S3 bucket is accessible"
+            
+            # Check for required files
+            echo "📁 Checking for required configuration files..."
+            aws s3 ls "s3://${BUCKET_NAME}/docker-compose/" || echo "⚠️ Docker compose files not found"
+            aws s3 ls "s3://${BUCKET_NAME}/nginx/" || echo "⚠️ Nginx config not found"
+            aws s3 ls "s3://${BUCKET_NAME}/scripts/" || echo "⚠️ Scripts not found"
+          else
+            echo "⚠️ S3 bucket not yet accessible"
+          fi
+        else
+          echo "⚠️ No bucket name available for verification"
+        fi
+
+    - name: Update CloudWatch Dashboard
+      run: |
+        echo "📊 Updating CloudWatch dashboard..."
+        
+        # Create/update CloudWatch dashboard for monitoring
+        aws cloudwatch put-dashboard \
+          --dashboard-name "SMS-Seller-Connect-${{ env.ENVIRONMENT }}" \
+          --dashboard-body '{
+            "widgets": [
+              {
+                "type": "metric",
+                "properties": {
+                  "metrics": [
+                    ["AWS/EC2", "CPUUtilization", "InstanceId", "${{ steps.outputs.outputs.instance_id }}"],
+                    [".", "NetworkIn", ".", "."],
+                    [".", "NetworkOut", ".", "."]
+                  ],
+                  "period": 300,
+                  "stat": "Average",
+                  "region": "${{ env.AWS_REGION }}",
+                  "title": "EC2 System Metrics"
+                }
+              },
+              {
+                "type": "metric",
+                "properties": {
+                  "metrics": [
+                    ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${{ steps.outputs.outputs.alb_dns }}"],
+                    [".", "TargetResponseTime", ".", "."],
+                    [".", "HTTPCode_Target_2XX_Count", ".", "."]
+                  ],
+                  "period": 300,
+                  "stat": "Sum",
+                  "region": "${{ env.AWS_REGION }}",
+                  "title": "ALB Metrics"
+                }
+              }
+            ]
+          }' || echo "⚠️ Dashboard update failed, continuing..."
+
+    - name: Display Deployment Results
+      if: always()
+      run: |
+        echo "#### 🚀 SMS Seller Connect Deployment Results"
+        echo ""
+        echo "**Status**: ${{ job.status == 'success' && '✅ Successfully Deployed' || '❌ Deployment Failed' }}"
+        echo "**Environment**: ${{ env.ENVIRONMENT }}"
+        echo "**Project**: ${{ env.PROJECT_NAME }}"
+        echo ""
+        echo "### 🌐 Application URLs:"
+        echo "- **Frontend**: ${{ steps.outputs.outputs.frontend_url }}"
+        echo "- **API**: ${{ steps.outputs.outputs.api_url }}"
+        echo "- **Health Check**: ${{ steps.outputs.outputs.api_url }}/api/health"
+        echo ""
+        echo "### 🏗️ Infrastructure Details:"
+        echo "- **Instance IP**: ${{ steps.outputs.outputs.instance_ip }}"
+        echo "- **Instance ID**: ${{ steps.outputs.outputs.instance_id }}"
+        echo "- **ALB DNS**: ${{ steps.outputs.outputs.alb_dns }}"
+        echo "- **S3 Bucket**: ${{ steps.outputs.outputs.bucket_name }}"
+        echo "- **ECR Repository**: ${{ env.ECR_REPOSITORY }}"
+        echo ""
+        echo "### 📊 Monitoring Links:"
+        echo "- **CloudWatch**: https://console.aws.amazon.com/cloudwatch/home?region=${{ env.AWS_REGION }}#dashboards:name=SMS-Seller-Connect-${{ env.ENVIRONMENT }}"
+        echo "- **EC2 Console**: https://console.aws.amazon.com/ec2/home?region=${{ env.AWS_REGION }}#Instances:search=${{ steps.outputs.outputs.instance_id }}"
+        echo "- **ALB Console**: https://console.aws.amazon.com/ec2/home?region=${{ env.AWS_REGION }}#LoadBalancers:"
+        echo ""
+        echo "### 🔧 Features Deployed:"
+        echo "- ✅ EC2 Instance with ALB multi-app architecture"
+        echo "- ✅ Application Load Balancer with SSL termination"
+        echo "- ✅ S3 bucket for configuration files"
+        echo "- ✅ CloudWatch monitoring and logging"
+        echo "- ✅ Route53 DNS records"
+        echo "- ✅ ACM SSL certificates"
+        echo "- ✅ Docker containerized applications"
+        echo "- ✅ Nginx reverse proxy"
+
+  destroy:
+    name: '💥 Destroy Infrastructure'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    environment: 
+      name: destroy-approval-${{ github.event.inputs.environment || 'prod' }}
+      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Terraform Init
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Initializing Terraform..."
+        terraform init -reconfigure \
+          -backend-config="bucket=${{ env.STATE_BUCKET }}" \
+          -backend-config="key=${{ env.STATE_KEY }}" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
+          -backend-config="encrypt=true"
+
+    - name: Create Environment-Specific Variables
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📝 Creating environment-specific terraform.tfvars for destruction..."
+        
+        # Copy base terraform.tfvars
+        cp terraform.tfvars terraform-${{ env.ENVIRONMENT }}.tfvars
+        
+        # Update environment-specific values
+        sed -i "s/environment *= *\".*\"/environment = \"${{ env.ENVIRONMENT }}\"/" terraform-${{ env.ENVIRONMENT }}.tfvars
+        
+        # Update domain based on environment
+        if [ "${{ env.ENVIRONMENT }}" != "prod" ]; then
+          sed -i "s/sms_frontend_domain *= *\"sms\./sms_frontend_domain = \"${{ env.ENVIRONMENT }}-sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
+          sed -i "s/sms_api_domain *= *\"api\.sms\./sms_api_domain = \"${{ env.ENVIRONMENT }}-api.sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
+        fi
+
+    - name: Show Resources to be Destroyed
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Resources that will be destroyed in ${{ env.ENVIRONMENT }}:"
+        terraform state list
+        echo ""
+        echo "📋 Destroy plan:"
+        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -destroy -no-color
+
+    - name: Terraform Destroy
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
+        terraform destroy -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
+        echo "🗑️ Destruction completed!"
+
+    - name: Display Destroy Results
+      if: always()
+      run: |
+        echo "#### 💥 SMS Seller Connect Infrastructure Destruction Results"
+        echo ""
+        echo "**Status**: ${{ job.status == 'success' && '✅ Successfully Destroyed' || '❌ Destruction Failed' }}"
+        echo "**Environment**: ${{ env.ENVIRONMENT }}"
+        echo "**Project**: ${{ env.PROJECT_NAME }}"
+        echo ""
+        echo "${{ job.status == 'success' && '⚠️ **All SMS Seller Connect infrastructure has been destroyed!**' || '❌ **Destruction failed - some resources may remain**' }}"
+        echo ""
+        echo "**Note**: State file preserved in S3 for audit purposes."
