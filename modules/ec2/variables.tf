@@ -280,7 +280,7 @@ variable "bucket_acl" {
 variable "use_default_vpc" {
   description = "Whether to use the default VPC"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "admin_ssh_cidr" {
@@ -346,7 +346,7 @@ variable "flask_secret_key" {
 variable "use_postgres" {
   description = "Whether to use PostgreSQL"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "database_url" {
@@ -420,14 +420,14 @@ variable "ngrok_subdomain" {
 variable "start_ngrok" {
   description = "Whether to start ngrok"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Application Settings
 variable "debug" {
   description = "Debug mode"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "log_level" {

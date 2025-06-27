@@ -311,7 +311,6 @@ jobs:
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
         
         # Networking Configuration
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -322,7 +321,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
@@ -372,7 +370,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -381,8 +378,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -392,7 +387,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -411,7 +405,6 @@ jobs:
         echo "Environment: ${TF_VAR_environment:-NOT_SET}"
         echo "Project: ${TF_VAR_project_name:-NOT_SET}"
         echo "Instance Type: ${TF_VAR_instance_type:-NOT_SET}"
-        echo "Use Default VPC: ${TF_VAR_use_default_vpc:-NOT_SET}"
         
         # Verify problematic tag variables are not set
         echo "🔍 Verifying tag variables are not set..."
@@ -427,7 +420,53 @@ jobs:
           echo "✅ TF_VAR_common_tags is not set (good)"
         fi
 
-
+    - name: Set Boolean Environment Variables
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting boolean environment variables for Terraform..."
+        
+        # Convert string boolean values to proper booleans
+        # GitHub Actions passes booleans as strings, so we need to convert them
+        
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+        fi
+        
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
+        
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
+        
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
+        
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
+        
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        
+        echo "✅ Boolean environment variables set successfully!"
 
     - name: Terraform Plan
       id: plan
@@ -445,7 +484,6 @@ jobs:
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
         
         # Networking Configuration
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -456,7 +494,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
@@ -506,7 +543,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -515,8 +551,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -526,7 +560,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -542,7 +575,6 @@ jobs:
         echo "Project: ${TF_VAR_project_name:-NOT_SET}"
         echo "Region: ${TF_VAR_region:-NOT_SET}"
         echo "Instance Type: ${TF_VAR_instance_type:-NOT_SET}"
-        echo "Use Default VPC: ${TF_VAR_use_default_vpc:-NOT_SET}"
         
         # Debug: Verify problematic tag variables are not set
         echo "🔍 DEBUG: Verifying tag variables are not set..."
@@ -743,7 +775,6 @@ jobs:
         TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
         TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -752,7 +783,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
         TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
@@ -790,7 +820,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -799,8 +828,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -810,7 +837,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -820,6 +846,51 @@ jobs:
       run: |
         echo "🔧 Setting up environment variables for apply..."
         echo "✅ All Terraform environment variables configured using GitHub Actions env context"
+
+    - name: Set Boolean Environment Variables for Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting boolean environment variables for Terraform Apply..."
+        
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+        fi
+        
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
+        
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
+        
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
+        
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
+        
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        
+        echo "✅ Boolean environment variables set for Apply!"
 
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
@@ -832,7 +903,6 @@ jobs:
         TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
         TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -841,7 +911,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
         TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
@@ -879,7 +948,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -888,8 +956,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -899,7 +965,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -1192,7 +1257,6 @@ jobs:
         TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
         TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -1201,7 +1265,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
         TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
@@ -1239,7 +1302,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -1248,8 +1310,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -1259,7 +1319,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -1269,6 +1328,51 @@ jobs:
       run: |
         echo "🔧 Setting up environment variables for destroy..."
         echo "✅ All Terraform environment variables configured using GitHub Actions env context"
+
+    - name: Set Boolean Environment Variables for Destroy
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting boolean environment variables for Terraform Destroy..."
+        
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+        fi
+        
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
+        
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
+        
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
+        
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
+        
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        
+        echo "✅ Boolean environment variables set for Destroy!"
 
     - name: Show Resources to be Destroyed
       working-directory: ${{ env.TF_WORKING_DIR }}
@@ -1281,7 +1385,6 @@ jobs:
         TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
         TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -1290,7 +1393,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
         TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
@@ -1328,7 +1430,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -1337,8 +1438,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -1348,7 +1447,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
@@ -1374,7 +1472,6 @@ jobs:
         TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
         TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
         TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
-        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
         TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
         TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
         TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
@@ -1383,7 +1480,6 @@ jobs:
         TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
-        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
         TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
@@ -1421,7 +1517,6 @@ jobs:
         TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
         TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
         TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
         TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
         TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
@@ -1430,8 +1525,6 @@ jobs:
         TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
         TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
         TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
-        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
-        TF_VAR_debug: ${{ vars.DEBUG || true }}
         TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
         TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
         TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
@@ -1441,7 +1534,6 @@ jobs:
         TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
         TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
         TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
-        TF_VAR_enable_carrental_domain: false
         TF_VAR_carrental_frontend_domain: ''
         TF_VAR_carrental_api_domain: ''
         TF_VAR_subnet_id: ''
