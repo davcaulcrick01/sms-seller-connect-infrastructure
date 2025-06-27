@@ -366,6 +366,51 @@ jobs:
         export TF_VAR_twilio_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms"
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        
+        # Additional variables from GitHub variables
+        export TF_VAR_db_port="${{ vars.DB_PORT }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_use_postgres="${{ vars.USE_POSTGRES }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
+        export TF_VAR_start_ngrok="${{ vars.START_NGROK }}"
+        export TF_VAR_debug="${{ vars.DEBUG }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
+        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
+        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        
+        # Complex variables (JSON/Maps) 
+        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
+        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        
+        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        export TF_VAR_subnet_id=""
+        export TF_VAR_route53_zone_id=""
+        export TF_VAR_alb_dns_name=""
+        export TF_VAR_alb_zone_id=""
         EOF
         
         # Source the environment file
@@ -606,6 +651,51 @@ jobs:
         export TF_VAR_twilio_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms"
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        
+        # Additional variables from GitHub variables
+        export TF_VAR_db_port="${{ vars.DB_PORT }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_use_postgres="${{ vars.USE_POSTGRES }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
+        export TF_VAR_start_ngrok="${{ vars.START_NGROK }}"
+        export TF_VAR_debug="${{ vars.DEBUG }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
+        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
+        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        
+        # Complex variables (JSON/Maps) 
+        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
+        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        
+        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        export TF_VAR_subnet_id=""
+        export TF_VAR_route53_zone_id=""
+        export TF_VAR_alb_dns_name=""
+        export TF_VAR_alb_zone_id=""
         EOF
 
     - name: Terraform Apply
@@ -941,6 +1031,51 @@ jobs:
         export TF_VAR_twilio_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms"
         export TF_VAR_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         export TF_VAR_frontend_url="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        
+        # Additional variables from GitHub variables
+        export TF_VAR_db_port="${{ vars.DB_PORT }}"
+        export TF_VAR_db_name="${{ vars.DB_NAME }}"
+        export TF_VAR_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_openai_model="${{ vars.OPENAI_MODEL }}"
+        export TF_VAR_openai_temperature="${{ vars.OPENAI_TEMPERATURE }}"
+        export TF_VAR_sendgrid_from_email="${{ vars.SENDGRID_FROM_EMAIL }}"
+        export TF_VAR_aws_access_key_id="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        export TF_VAR_aws_secret_access_key="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        export TF_VAR_aws_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_aws_default_region="${{ vars.AWS_REGION || 'us-east-1' }}"
+        export TF_VAR_use_postgres="${{ vars.USE_POSTGRES }}"
+        export TF_VAR_backend_port="${{ vars.BACKEND_PORT }}"
+        export TF_VAR_frontend_port="${{ vars.FRONTEND_PORT }}"
+        export TF_VAR_vite_api_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_backend_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export TF_VAR_allowed_origins="https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        export TF_VAR_ngrok_port="${{ vars.NGROK_PORT }}"
+        export TF_VAR_ngrok_url="${{ vars.NGROK_URL }}"
+        export TF_VAR_ngrok_subdomain="${{ vars.NGROK_SUBDOMAIN || '' }}"
+        export TF_VAR_start_ngrok="${{ vars.START_NGROK }}"
+        export TF_VAR_debug="${{ vars.DEBUG }}"
+        export TF_VAR_log_level="${{ vars.LOG_LEVEL }}"
+        export TF_VAR_hot_lead_webhook_url="https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts"
+        export TF_VAR_hot_lead_email_recipients="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS }}"
+        export TF_VAR_rate_limit_per_minute="${{ vars.RATE_LIMIT_PER_MINUTE }}"
+        export TF_VAR_rate_limit_burst="${{ vars.RATE_LIMIT_BURST }}"
+        export TF_VAR_session_timeout_minutes="${{ vars.SESSION_TIMEOUT_MINUTES }}"
+        export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
+        export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
+        export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
+        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
+        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
+        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        
+        # Complex variables (JSON/Maps) 
+        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
+        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        
+        # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
+        export TF_VAR_subnet_id=""
+        export TF_VAR_route53_zone_id=""
+        export TF_VAR_alb_dns_name=""
+        export TF_VAR_alb_zone_id=""
         EOF
 
     - name: Show Resources to be Destroyed
