@@ -430,6 +430,107 @@ jobs:
     - name: Terraform Plan
       id: plan
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        
+        # EC2 Configuration
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        
+        # Networking Configuration
+        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        
+        # S3 Configuration
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
+        
+        # Container Configuration
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        
+        # Domain Configuration
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        
+        # Monitoring
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        
+        # Secrets
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        
+        # Application URLs
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        
+        # Additional Configuration
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
+        TF_VAR_debug: ${{ vars.DEBUG || true }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_enable_carrental_domain: false
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "📋 Creating Terraform plan for ${{ env.ENVIRONMENT }} environment..."
         
@@ -520,6 +621,16 @@ jobs:
         
         echo "🔍 DEBUG: Plan changes detected in output: $plan_has_changes"
         
+        # Check if there were validation errors (terraform exits with 1 for errors)
+        if grep -q "Error:" plan_output.txt; then
+          echo "❌ Terraform validation errors detected"
+          echo "status=error" >> $GITHUB_OUTPUT
+          echo "has-changes=false" >> $GITHUB_OUTPUT
+          echo "🔍 Showing validation errors:"
+          cat plan_output.txt
+          exit 1
+        fi
+        
         case $exit_code in
           0)
             # Double-check for changes even with exit code 0 (terraform bug workaround)
@@ -546,9 +657,10 @@ jobs:
             echo "📝 Changes detected (exit code: $exit_code)"
             ;;
           *)
-            echo "⚠️ Unexpected exit code: $exit_code - treating as changes detected"
-            echo "status=changes-detected" >> $GITHUB_OUTPUT
-            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Unexpected exit code: $exit_code - treating as error"
+            echo "status=error" >> $GITHUB_OUTPUT
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            exit 1
             ;;
         esac
         
@@ -709,6 +821,89 @@ jobs:
 
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
+        TF_VAR_debug: ${{ vars.DEBUG || true }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_enable_carrental_domain: false
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "🚀 Applying Terraform changes for ${{ env.ENVIRONMENT }} environment..."
         echo "📍 Backend: s3://${{ env.STATE_BUCKET }}/${{ env.STATE_KEY }}"
@@ -1075,6 +1270,89 @@ jobs:
 
     - name: Show Resources to be Destroyed
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
+        TF_VAR_debug: ${{ vars.DEBUG || true }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_enable_carrental_domain: false
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "🔍 Resources that will be destroyed in ${{ env.ENVIRONMENT }}:"
         
@@ -1085,6 +1363,89 @@ jobs:
 
     - name: Terraform Destroy
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_use_default_vpc: ${{ vars.USE_DEFAULT_VPC || true }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_s3_force_destroy: ${{ vars.S3_FORCE_DESTROY || false }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_use_postgres: ${{ vars.USE_POSTGRES || true }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_start_ngrok: ${{ vars.START_NGROK || true }}
+        TF_VAR_debug: ${{ vars.DEBUG || true }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_enable_carrental_domain: false
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
         
