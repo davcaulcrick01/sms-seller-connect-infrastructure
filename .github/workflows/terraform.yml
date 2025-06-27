@@ -434,7 +434,6 @@ jobs:
         
         # Explicitly unset problematic tag variables before planning
         unset TF_VAR_tags TF_VAR_common_tags 2>/dev/null || true
-        
         # Debug: Show some environment variables are set
         echo "🔍 DEBUG: Checking key variables..."
         echo "Environment: $TF_VAR_environment"
