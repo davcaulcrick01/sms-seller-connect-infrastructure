@@ -726,9 +726,6 @@ jobs:
     needs: [format, validate, plan]
     if: |
       github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
-    environment: 
-      name: approve-deploy-${{ github.event.inputs.environment || 'prod' }}
-      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
     
     steps:
     - name: Checkout
@@ -1215,9 +1212,6 @@ jobs:
     name: '💥 Destroy Infrastructure'
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
-    environment: 
-      name: destroy-approval-${{ github.event.inputs.environment || 'prod' }}
-      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
     
     steps:
     - name: Checkout
