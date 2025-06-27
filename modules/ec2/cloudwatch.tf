@@ -351,7 +351,7 @@ resource "aws_ssm_parameter" "cloudwatch_agent_config" {
   name      = "/car-rental/cloudwatch-agent-config"
   type      = "String"
   overwrite = true
-  value     = jsonencode({
+  value = jsonencode({
     agent = {
       metrics_collection_interval = 60
       run_as_user                 = "root"

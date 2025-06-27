@@ -80,17 +80,73 @@ jobs:
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
+    - name: Verify Working Directory
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 Verifying environment setup..."
+        echo "📁 Current directory: $(pwd)"
+        echo "🔧 Terraform version: $(terraform version)"
+        echo "📋 Terraform files in directory:"
+        find . -name "*.tf" -type f | wc -l | xargs echo "   Total files:"
+        find . -name "*.tf" -type f | head -5
+        if [ $(find . -name "*.tf" -type f | wc -l) -eq 0 ]; then
+          echo "❌ No Terraform files found in working directory"
+          exit 1
+        fi
+        echo "✅ Environment verification complete"
+
     - name: Auto-Format Terraform Files
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🎨 Auto-formatting Terraform files..."
         
+        # Check current formatting status
+        echo "📁 Working directory: $(pwd)"
+        echo "📋 Terraform files found:"
+        find . -name "*.tf" -type f | head -10
+        echo ""
+        
+        set +e
+        terraform fmt -check -diff > format-check.log 2>&1
+        format_check_exit=$?
+        set -e
+        
+        if [ $format_check_exit -eq 0 ]; then
+          echo "ℹ️ All Terraform files are already properly formatted"
+          exit 0
+        elif [ $format_check_exit -eq 3 ]; then
+          echo "🔧 Formatting issues detected, applying auto-format..."
+          cat format-check.log
+          echo ""
+        else
+          echo "❌ Unexpected error during format check:"
+          cat format-check.log
+          exit 1
+        fi
+        
         # Format all terraform files
-        terraform fmt -recursive
+        terraform fmt
+        
+        # Verify formatting was successful
+        set +e
+        terraform fmt -check > /dev/null 2>&1
+        verify_exit=$?
+        set -e
+        
+        if [ $verify_exit -ne 0 ]; then
+          echo "❌ Auto-formatting failed to fix all issues"
+          terraform fmt -check -diff
+          exit 1
+        fi
         
         # Check if any files were changed
         if [[ -n $(git status --porcelain) ]]; then
           echo "✅ Terraform files have been auto-formatted"
+          
+          # Show what was changed
+          echo "📝 Files modified:"
+          git status --porcelain
+          echo ""
           
           # Configure git
           git config --local user.email "action@github.com"
@@ -109,7 +165,7 @@ jobs:
           
           echo "📤 Formatted files committed and pushed"
         else
-          echo "ℹ️ All Terraform files are already properly formatted"
+          echo "ℹ️ No files were modified during formatting"
         fi
 
   validate:
@@ -134,8 +190,34 @@ jobs:
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🎨 Verifying Terraform formatting..."
-        terraform fmt -check -recursive
-        echo "✅ All Terraform files are properly formatted"
+        echo "📁 Working directory: $(pwd)"
+        echo "📋 Terraform files found:"
+        find . -name "*.tf" -type f | head -10
+        echo ""
+        
+        # Check formatting and capture exit code
+        set +e
+        format_output=$(terraform fmt -check -diff 2>&1)
+        format_exit_code=$?
+        set -e
+        
+        if [ $format_exit_code -eq 0 ]; then
+          echo "✅ All Terraform files are properly formatted"
+        elif [ $format_exit_code -eq 3 ]; then
+          echo "❌ Terraform formatting issues detected:"
+          echo "$format_output"
+          echo ""
+          echo "💡 To fix these issues locally, run:"
+          echo "   cd Infrastructure/sms-seller-connect/modules/ec2"
+          echo "   terraform fmt -recursive"
+          echo ""
+          echo "🔧 Or trigger auto-format by running the workflow with 'format' action"
+          exit 1
+        else
+          echo "❌ Terraform format check failed with unexpected error (exit code: $format_exit_code):"
+          echo "$format_output"
+          exit 1
+        fi
 
     - name: Terraform Init
       working-directory: ${{ env.TF_WORKING_DIR }}
