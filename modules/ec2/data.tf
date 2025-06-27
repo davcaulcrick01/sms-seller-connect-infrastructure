@@ -11,7 +11,7 @@ data "aws_caller_identity" "current" {}
 # VPC - Use default VPC or specify VPC name
 data "aws_vpc" "selected" {
   default = var.use_default_vpc
-  
+
   dynamic "filter" {
     for_each = var.use_default_vpc ? [] : [1]
     content {
@@ -24,7 +24,7 @@ data "aws_vpc" "selected" {
 # Public Subnet A - First subnet for ALB and EC2
 data "aws_subnet" "public_subnet" {
   vpc_id = data.aws_vpc.selected.id
-  
+
   filter {
     name   = "tag:Name"
     values = [var.subnet_name]
@@ -34,7 +34,7 @@ data "aws_subnet" "public_subnet" {
 # Public Subnet B - Second subnet for ALB (required for multi-AZ)
 data "aws_subnet" "public_subnet_b" {
   vpc_id = data.aws_vpc.selected.id
-  
+
   filter {
     name   = "tag:Name"
     values = [var.subnet_name_b]

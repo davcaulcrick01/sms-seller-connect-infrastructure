@@ -4,7 +4,7 @@
 
 # Request ACM certificate
 resource "aws_acm_certificate" "main" {
-  domain_name               = var.domain_zone_name
+  domain_name = var.domain_zone_name
   subject_alternative_names = [
     "*.${var.domain_zone_name}",
     var.sms_frontend_domain,
