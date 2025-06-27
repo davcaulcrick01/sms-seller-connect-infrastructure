@@ -228,171 +228,36 @@ jobs:
 
 
 
-    - name: Create GitHub-Based Terraform Variables
+    - name: Set Terraform Environment Variables
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📝 Creating terraform.tfvars from GitHub secrets and variables..."
+        echo "🔧 Setting Terraform environment variables from GitHub secrets..."
         
-        # Create terraform.tfvars from GitHub secrets and variables
-        cat > terraform-github.tfvars << 'EOF'
-        ########################################
-        # SMS Seller Connect Configuration from GitHub
-        ########################################
-        
-        # Basic Configuration
-        region       = "${{ vars.AWS_REGION || 'us-east-1' }}"
-        environment  = "${{ env.ENVIRONMENT }}"
-        project_name = "${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
-        
-        # EC2 Configuration
-        ami_id        = "${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}"
-        instance_type = "${{ vars.INSTANCE_TYPE || 't2.micro' }}"
-        key_name      = "${{ vars.KEY_NAME || 'sms-seller-connect-key' }}"
-        instance_name = "${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}"
-        
-        # Networking Configuration
-        use_default_vpc = ${{ vars.USE_DEFAULT_VPC || 'false' }}
-        vpc_name        = "${{ vars.VPC_NAME || 'Grey-VPC' }}"
-        subnet_name     = "${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}"
-        subnet_name_b   = "${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}"
-        subnet_id       = "${{ vars.SUBNET_ID || '' }}"
-        admin_ssh_cidr  = "${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}"
-        
-        # SSH Configuration
-        ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
-        
-        # S3 Configuration
-        bucket_name        = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
-        s3_bucket_name     = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
-        s3_acl             = "${{ vars.S3_ACL || 'private' }}"
-        bucket_acl         = "${{ vars.S3_ACL || 'private' }}"
-        s3_force_destroy   = ${{ vars.S3_FORCE_DESTROY || 'false' }}
-        
-        # Container Configuration
-        ecr_repo_url   = "${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}"
-        container_tag  = "${{ vars.CONTAINER_TAG || 'latest' }}"
-        app_port       = "${{ vars.APP_PORT || '8900' }}"
-        
-        # Docker Images
-        backend_image  = "${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
-        frontend_image = "${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
-        
-        # Domain Configuration
-        domain_zone_name    = "${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}"
-        domain_name         = "${{ vars.DOMAIN_NAME || 'typerelations.com' }}"
-        sms_frontend_domain = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        sms_api_domain      = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        
-        # Route53 Configuration
-        # Note: Zone is now managed by Terraform resource
-        alb_dns_name    = "${{ vars.ALB_DNS_NAME || '' }}"
-        alb_zone_id     = "${{ vars.ALB_ZONE_ID || '' }}"
-        
-        # Optional Car Rental domains
-        enable_carrental_domain   = ${{ vars.ENABLE_CARRENTAL_DOMAIN || 'false' }}
-        carrental_frontend_domain = "${{ vars.CARRENTAL_FRONTEND_DOMAIN || 'carrental.greyzoneapps.com' }}"
-        carrental_api_domain      = "${{ vars.CARRENTAL_API_DOMAIN || 'api.carrental.greyzoneapps.com' }}"
-        
-        # Monitoring Configuration
-        alert_email = "${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
-        
-        # Tags
-        tags = {
-          Project     = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
-          Environment = "${{ env.ENVIRONMENT }}"
-          ManagedBy   = "Terraform"
-          Owner       = "${{ vars.OWNER_TAG || 'GreyZone' }}"
-        }
-        
-        common_tags = {
-          Project = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
-          Owner   = "${{ vars.OWNER_TAG || 'TeamGreyZone' }}"
-        }
-        
-        ########################################
-        # Application Configuration (Secrets)
-        ########################################
-        
-        # Database Configuration
-        use_postgres  = ${{ vars.USE_POSTGRES || 'true' }}
-        db_host       = "${{ secrets.DB_HOST }}"
-        db_port       = "${{ vars.DB_PORT || '5437' }}"
-        db_name       = "${{ vars.DB_NAME || 'sms_blast' }}"
-        db_user       = "${{ secrets.DB_USER }}"
-        db_password   = "${{ secrets.DB_PASSWORD }}"
-        database_url  = "postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:${{ vars.DB_PORT || '5437' }}/${{ vars.DB_NAME || 'sms_blast' }}"
-        
-        # Application Security
-        flask_secret_key = "${{ secrets.FLASK_SECRET_KEY }}"
-        secret_key       = "${{ secrets.FLASK_SECRET_KEY }}"
-        jwt_secret_key   = "${{ secrets.JWT_SECRET_KEY }}"
-        
-        # Twilio Configuration
-        twilio_account_sid  = "${{ secrets.TWILIO_ACCOUNT_SID }}"
-        twilio_auth_token   = "${{ secrets.TWILIO_AUTH_TOKEN }}"
-        twilio_phone_number = "${{ secrets.TWILIO_PHONE_NUMBER }}"
-        twilio_webhook_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/webhooks/sms"
-        
-        # OpenAI Configuration
-        openai_api_key     = "${{ secrets.OPENAI_API_KEY }}"
-        openai_model       = "${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
-        openai_temperature = "${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
-        
-        # SendGrid Configuration
-        sendgrid_api_key    = "${{ secrets.SENDGRID_API_KEY }}"
-        sendgrid_from_email = "${{ vars.SENDGRID_FROM_EMAIL || 'noreply@greyzonesolutions.com' }}"
-        
-        # AWS Configuration for Application
-        aws_access_key_id     = "${{ secrets.AWS_ACCESS_KEY_ID }}"
-        aws_secret_access_key = "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-        aws_region            = "${{ vars.AWS_REGION || 'us-east-1' }}"
-        aws_default_region    = "${{ vars.AWS_REGION || 'us-east-1' }}"
-        
-        # API Configuration
-        api_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        vite_api_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        backend_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        frontend_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        backend_port = "${{ vars.BACKEND_PORT || '8900' }}"
-        frontend_port = "${{ vars.FRONTEND_PORT || '8082' }}"
-        
-        # CORS Configuration
-        allowed_origins = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }},https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        
-        # Ngrok Configuration (Dev only)
-        ngrok_port       = "${{ vars.NGROK_PORT || '8900' }}"
-        ngrok_url        = "${{ vars.NGROK_URL || 'https://sms-seller-connect.ngrok-free.app' }}"
-        ngrok_auth_token = "${{ secrets.NGROK_AUTH_TOKEN }}"
-        ngrok_subdomain  = "${{ vars.NGROK_SUBDOMAIN || '' }}"
-        start_ngrok      = ${{ env.ENVIRONMENT != 'prod' && vars.START_NGROK || 'false' }}
-        
-        # Application Settings
-        debug     = ${{ env.ENVIRONMENT != 'prod' && vars.DEBUG || 'false' }}
-        log_level = "${{ vars.LOG_LEVEL || 'info' }}"
-        
-        # Hot Lead Configuration
-        hot_lead_webhook_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/alerts"
-        hot_lead_email_recipients = "${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'admin@greyzonesolutions.com' }}"
-        hot_lead_sms_recipients   = "${{ secrets.HOT_LEAD_SMS_RECIPIENTS || secrets.TWILIO_PHONE_NUMBER }}"
-        
-        # Rate Limiting Configuration
-        rate_limit_per_minute = "${{ vars.RATE_LIMIT_PER_MINUTE || '60' }}"
-        rate_limit_burst      = "${{ vars.RATE_LIMIT_BURST || '10' }}"
-        
-        # Session Configuration
-        session_timeout_minutes = "${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
-        remember_me_days        = "${{ vars.REMEMBER_ME_DAYS || '30' }}"
-        
-        # File Upload Configuration
-        max_file_size_mb   = "${{ vars.MAX_FILE_SIZE_MB || '10' }}"
-        allowed_file_types = "${{ vars.ALLOWED_FILE_TYPES || 'pdf,jpg,jpeg,png,doc,docx,csv' }}"
+        # Set sensitive variables as environment variables for Terraform
+        cat > terraform.env << 'EOF'
+        # Sensitive variables passed as environment variables
+        export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
+        export TF_VAR_db_host="${{ secrets.DB_HOST }}"
+        export TF_VAR_db_user="${{ secrets.DB_USER }}"
+        export TF_VAR_db_password="${{ secrets.DB_PASSWORD }}"
+        export TF_VAR_flask_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_jwt_secret_key="${{ secrets.JWT_SECRET_KEY }}"
+        export TF_VAR_twilio_account_sid="${{ secrets.TWILIO_ACCOUNT_SID }}"
+        export TF_VAR_twilio_auth_token="${{ secrets.TWILIO_AUTH_TOKEN }}"
+        export TF_VAR_twilio_phone_number="${{ secrets.TWILIO_PHONE_NUMBER }}"
+        export TF_VAR_openai_api_key="${{ secrets.OPENAI_API_KEY }}"
+        export TF_VAR_sendgrid_api_key="${{ secrets.SENDGRID_API_KEY }}"
+        export TF_VAR_ngrok_auth_token="${{ secrets.NGROK_AUTH_TOKEN }}"
+        export TF_VAR_hot_lead_sms_recipients="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
+        export TF_VAR_environment="${{ env.ENVIRONMENT }}"
         EOF
         
-        echo "✅ GitHub-based terraform.tfvars created"
-        echo "📊 Variables summary:"
-        echo "- Environment: ${{ env.ENVIRONMENT }}"
-        echo "- Frontend Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        echo "- API Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        # Source the environment file
+        source terraform.env
+        
+        echo "✅ Terraform environment variables configured"
+        echo "📊 Environment: ${{ env.ENVIRONMENT }}"
+        echo "🔒 Secrets loaded as TF_VAR_* environment variables"
 
     - name: Terraform Plan
       id: plan
@@ -400,9 +265,12 @@ jobs:
       run: |
         echo "📋 Creating Terraform plan for ${{ env.ENVIRONMENT }} environment..."
         
+        # Source environment variables
+        source terraform.env
+        
         # Create plan with detailed exit codes
         set +e
-        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
+        terraform plan -var-file=terraform.tfvars -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
         exit_code=$?
         set -e
         
@@ -479,11 +347,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [format, validate, plan]
     if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
-      (github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment == 'prod') ||
-      (github.ref == 'refs/heads/develop' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment != 'prod')
+      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
     environment: 
-      name: ${{ github.event.inputs.environment || 'prod' }}
+      name: approve-deploy-${{ github.event.inputs.environment || 'prod' }}
       url: https://${{ env.SMS_FRONTEND_DOMAIN }}
     
     steps:
@@ -520,18 +386,44 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
+    - name: Set Environment Variables for Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting up environment variables for apply..."
+        
+        # Recreate environment variables (they don't persist between steps)
+        cat > terraform.env << 'EOF'
+        export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
+        export TF_VAR_db_host="${{ secrets.DB_HOST }}"
+        export TF_VAR_db_user="${{ secrets.DB_USER }}"
+        export TF_VAR_db_password="${{ secrets.DB_PASSWORD }}"
+        export TF_VAR_flask_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_jwt_secret_key="${{ secrets.JWT_SECRET_KEY }}"
+        export TF_VAR_twilio_account_sid="${{ secrets.TWILIO_ACCOUNT_SID }}"
+        export TF_VAR_twilio_auth_token="${{ secrets.TWILIO_AUTH_TOKEN }}"
+        export TF_VAR_twilio_phone_number="${{ secrets.TWILIO_PHONE_NUMBER }}"
+        export TF_VAR_openai_api_key="${{ secrets.OPENAI_API_KEY }}"
+        export TF_VAR_sendgrid_api_key="${{ secrets.SENDGRID_API_KEY }}"
+        export TF_VAR_ngrok_auth_token="${{ secrets.NGROK_AUTH_TOKEN }}"
+        export TF_VAR_hot_lead_sms_recipients="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
+        export TF_VAR_environment="${{ env.ENVIRONMENT }}"
+        EOF
+
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🚀 Applying Terraform changes for ${{ env.ENVIRONMENT }} environment..."
         echo "📍 Backend: s3://${{ env.STATE_BUCKET }}/${{ env.STATE_KEY }}"
         
+        # Source environment variables
+        source terraform.env
+        
         if [ -f "tfplan" ]; then
           echo "📋 Applying saved plan..."
           terraform apply -auto-approve tfplan
         else
           echo "📋 Creating and applying new plan..."
-          terraform apply -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
+          terraform apply -var-file=terraform.tfvars -auto-approve
         fi
         
         echo "✅ SMS Seller Connect infrastructure deployment completed!"
@@ -797,37 +689,51 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
-    - name: Create Environment-Specific Variables
+    - name: Set Environment Variables for Destroy
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📝 Creating environment-specific terraform.tfvars for destruction..."
+        echo "🔧 Setting up environment variables for destroy..."
         
-        # Copy base terraform.tfvars
-        cp terraform.tfvars terraform-${{ env.ENVIRONMENT }}.tfvars
-        
-        # Update environment-specific values
-        sed -i "s/environment *= *\".*\"/environment = \"${{ env.ENVIRONMENT }}\"/" terraform-${{ env.ENVIRONMENT }}.tfvars
-        
-        # Update domain based on environment
-        if [ "${{ env.ENVIRONMENT }}" != "prod" ]; then
-          sed -i "s/sms_frontend_domain *= *\"sms\./sms_frontend_domain = \"${{ env.ENVIRONMENT }}-sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
-          sed -i "s/sms_api_domain *= *\"api\.sms\./sms_api_domain = \"${{ env.ENVIRONMENT }}-api.sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
-        fi
+        # Create environment variables
+        cat > terraform.env << 'EOF'
+        export TF_VAR_ssh_public_key="${{ secrets.SSH_PUBLIC_KEY }}"
+        export TF_VAR_db_host="${{ secrets.DB_HOST }}"
+        export TF_VAR_db_user="${{ secrets.DB_USER }}"
+        export TF_VAR_db_password="${{ secrets.DB_PASSWORD }}"
+        export TF_VAR_flask_secret_key="${{ secrets.FLASK_SECRET_KEY }}"
+        export TF_VAR_jwt_secret_key="${{ secrets.JWT_SECRET_KEY }}"
+        export TF_VAR_twilio_account_sid="${{ secrets.TWILIO_ACCOUNT_SID }}"
+        export TF_VAR_twilio_auth_token="${{ secrets.TWILIO_AUTH_TOKEN }}"
+        export TF_VAR_twilio_phone_number="${{ secrets.TWILIO_PHONE_NUMBER }}"
+        export TF_VAR_openai_api_key="${{ secrets.OPENAI_API_KEY }}"
+        export TF_VAR_sendgrid_api_key="${{ secrets.SENDGRID_API_KEY }}"
+        export TF_VAR_ngrok_auth_token="${{ secrets.NGROK_AUTH_TOKEN }}"
+        export TF_VAR_hot_lead_sms_recipients="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
+        export TF_VAR_environment="${{ env.ENVIRONMENT }}"
+        EOF
 
     - name: Show Resources to be Destroyed
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🔍 Resources that will be destroyed in ${{ env.ENVIRONMENT }}:"
+        
+        # Source environment variables
+        source terraform.env
+        
         terraform state list
         echo ""
         echo "📋 Destroy plan:"
-        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -destroy -no-color
+        terraform plan -var-file=terraform.tfvars -destroy -no-color
 
     - name: Terraform Destroy
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
-        terraform destroy -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
+        
+        # Source environment variables
+        source terraform.env
+        
+        terraform destroy -var-file=terraform.tfvars -auto-approve
         echo "🗑️ Destruction completed!"
 
     - name: Display Destroy Results

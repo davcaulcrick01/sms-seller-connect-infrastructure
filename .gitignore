@@ -38,8 +38,11 @@ Thumbs.db
 
 # Temporary files
 .tmp/
-temp/ # Terraform files with secrets
+temp/
+
+# Terraform files with secrets (should not be committed)
+terraform.tfvars
+terraform-*.tfvars
 **/*.tfvars
 **/*.tfvars.json
-terraform.tfstate*
-.terraform/
+terraform.env
