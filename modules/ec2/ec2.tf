@@ -2,36 +2,18 @@
 # EC2 Instance for Multi-App Container Host
 ########################################
 
-# Key Pair for SSH access
-resource "aws_key_pair" "sms_seller_connect_key" {
-  key_name   = "${local.name_prefix}-key"
-  public_key = var.ssh_public_key
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "${local.name_prefix}-key"
-    }
-  )
+# Use existing car rental key pair
+data "aws_key_pair" "existing_key" {
+  key_name = "car_rental_pem"
 }
 
-# Elastic IP for consistent public IP
-resource "aws_eip" "ec2_eip" {
-  domain = "vpc"
-
-  tags = merge(
-    var.tags,
-    {
-      Name = "${local.name_prefix}-eip"
-    }
-  )
-}
+# Note: EIP not needed since we use ALB for public access
 
 # EC2 Instance
 resource "aws_instance" "sms_seller_connect_ec2" {
   ami                    = var.ami_id
   instance_type          = var.instance_type
-  key_name               = aws_key_pair.sms_seller_connect_key.key_name
+  key_name               = data.aws_key_pair.existing_key.key_name
   subnet_id              = data.aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   iam_instance_profile   = data.aws_iam_instance_profile.ec2_profile.name
@@ -132,8 +114,4 @@ resource "aws_instance" "sms_seller_connect_ec2" {
   ]
 }
 
-# Associate Elastic IP with EC2 Instance
-resource "aws_eip_association" "ec2_eip_assoc" {
-  instance_id   = aws_instance.sms_seller_connect_ec2.id
-  allocation_id = aws_eip.ec2_eip.id
-} 
+# Note: No EIP association needed since we use ALB for public access 

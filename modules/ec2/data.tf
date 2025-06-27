@@ -21,24 +21,33 @@ data "aws_vpc" "selected" {
   }
 }
 
-# Public Subnet A - First subnet for ALB and EC2
-data "aws_subnet" "public_subnet" {
-  vpc_id = data.aws_vpc.selected.id
-
+# Get all public subnets for ALB (need at least 2 in different AZs)
+data "aws_subnets" "public" {
   filter {
-    name   = "tag:Name"
-    values = [var.subnet_name]
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected.id]
+  }
+  
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+  
+  # Filter for public subnets (those with internet gateway route)
+  filter {
+    name   = "route-table-association.route-table.route.gateway-id"
+    values = ["igw-*"]
   }
 }
 
-# Public Subnet B - Second subnet for ALB (required for multi-AZ)
-data "aws_subnet" "public_subnet_b" {
-  vpc_id = data.aws_vpc.selected.id
+# Primary subnet for EC2 instance
+data "aws_subnet" "public_subnet" {
+  id = data.aws_subnets.public.ids[0]
+}
 
-  filter {
-    name   = "tag:Name"
-    values = [var.subnet_name_b]
-  }
+# Secondary subnet for ALB (different AZ)
+data "aws_subnet" "public_subnet_b" {
+  id = length(data.aws_subnets.public.ids) > 1 ? data.aws_subnets.public.ids[1] : data.aws_subnets.public.ids[0]
 }
 
 # Get availability zones

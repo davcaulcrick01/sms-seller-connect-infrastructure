@@ -8,8 +8,8 @@ output "instance_id" {
 }
 
 output "instance_public_ip" {
-  description = "Public IP address of the EC2 instance"
-  value       = aws_eip.ec2_eip.public_ip
+  description = "Public IP address of the EC2 instance (via ALB)"
+  value       = aws_lb.main.dns_name
 }
 
 output "instance_private_ip" {
@@ -132,7 +132,7 @@ output "s3_bucket_name" {
 
 output "acm_certificate_arn" {
   description = "ARN of the ACM certificate"
-  value       = aws_acm_certificate_validation.main.certificate_arn
+  value       = aws_acm_certificate.main.arn
 }
 
 output "acm_certificate_domain" {
