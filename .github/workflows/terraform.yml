@@ -296,8 +296,6 @@ jobs:
           echo "✅ No state lock detected"
         fi
 
-
-
     - name: Set Terraform Environment Variables
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
@@ -398,13 +396,13 @@ jobs:
         export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
         export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
         export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
-        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
-        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
-        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        export TF_VAR_enable_carrental_domain="false"
+        export TF_VAR_carrental_frontend_domain=""
+        export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) 
-        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
-        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        # Complex variables (JSON/Maps) - use single line format with proper escaping
+        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
@@ -683,13 +681,13 @@ jobs:
         export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
         export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
         export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
-        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
-        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
-        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        export TF_VAR_enable_carrental_domain="false"
+        export TF_VAR_carrental_frontend_domain=""
+        export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) 
-        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
-        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        # Complex variables (JSON/Maps) - use single line format with proper escaping
+        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
@@ -1063,13 +1061,13 @@ jobs:
         export TF_VAR_remember_me_days="${{ vars.REMEMBER_ME_DAYS }}"
         export TF_VAR_max_file_size_mb="${{ vars.MAX_FILE_SIZE_MB }}"
         export TF_VAR_allowed_file_types="${{ vars.ALLOWED_FILE_TYPES }}"
-        export TF_VAR_enable_carrental_domain="${{ vars.ENABLE_CARRENTAL_DOMAIN }}"
-        export TF_VAR_carrental_frontend_domain="${{ vars.CARRENTAL_FRONTEND_DOMAIN }}"
-        export TF_VAR_carrental_api_domain="${{ vars.CARRENTAL_API_DOMAIN }}"
+        export TF_VAR_enable_carrental_domain="false"
+        export TF_VAR_carrental_frontend_domain=""
+        export TF_VAR_carrental_api_domain=""
         
-        # Complex variables (JSON/Maps) 
-        export TF_VAR_tags='{"Project":"${{ vars.PROJECT_TAG }}","Environment":"${{ env.ENVIRONMENT }}","ManagedBy":"Terraform","Owner":"${{ vars.OWNER_TAG }}"}'
-        export TF_VAR_common_tags='{"Project":"${{ vars.PROJECT_TAG }}","Owner":"${{ vars.OWNER_TAG }}"}'
+        # Complex variables (JSON/Maps) - use single line format with proper escaping
+        export TF_VAR_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Environment\":\"${{ env.ENVIRONMENT }}\",\"ManagedBy\":\"Terraform\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
+        export TF_VAR_common_tags="{\"Project\":\"${{ vars.PROJECT_TAG }}\",\"Owner\":\"${{ vars.OWNER_TAG }}\"}"
         
         # Dynamic/Runtime variables (empty for initial creation - will be populated from Terraform state)
         export TF_VAR_subnet_id=""
