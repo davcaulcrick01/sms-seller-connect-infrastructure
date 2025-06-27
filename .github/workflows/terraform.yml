@@ -226,6 +226,48 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
+    - name: Ensure Route53 Hosted Zone Exists
+      run: |
+        echo "🌐 Checking and creating Route53 hosted zone for ${{ env.DOMAIN_NAME }}..."
+        
+        DOMAIN_NAME="${{ env.DOMAIN_NAME }}"
+        
+        # Check if hosted zone already exists
+        ZONE_ID=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='${DOMAIN_NAME}.'].Id" --output text 2>/dev/null | cut -d'/' -f3)
+        
+        if [ -n "$ZONE_ID" ] && [ "$ZONE_ID" != "None" ]; then
+          echo "✅ Route53 hosted zone already exists: $ZONE_ID"
+          echo "ROUTE53_ZONE_ID=${ZONE_ID}" >> $GITHUB_ENV
+        else
+          echo "🔧 Creating Route53 hosted zone for ${DOMAIN_NAME}..."
+          
+          # Create hosted zone
+          CALLER_REFERENCE="sms-seller-connect-$(date +%s)"
+          RESULT=$(aws route53 create-hosted-zone \
+            --name "${DOMAIN_NAME}" \
+            --caller-reference "${CALLER_REFERENCE}" \
+            --hosted-zone-config Comment="SMS Seller Connect - Created by GitHub Actions")
+          
+          # Extract zone ID
+          NEW_ZONE_ID=$(echo "$RESULT" | jq -r '.HostedZone.Id' | cut -d'/' -f3)
+          echo "✅ Created Route53 hosted zone: $NEW_ZONE_ID"
+          echo "ROUTE53_ZONE_ID=${NEW_ZONE_ID}" >> $GITHUB_ENV
+          
+          # Get name servers
+          NAME_SERVERS=$(aws route53 get-hosted-zone --id "$NEW_ZONE_ID" --query 'DelegationSet.NameServers' --output table)
+          echo "📋 Update your domain registrar with these name servers:"
+          echo "$NAME_SERVERS"
+          
+          # Create GitHub issue with nameserver instructions (if we have permissions)
+          echo "📝 Name servers for ${DOMAIN_NAME}:" > nameservers.txt
+          aws route53 get-hosted-zone --id "$NEW_ZONE_ID" --query 'DelegationSet.NameServers[]' --output text >> nameservers.txt
+          
+          if [ -f nameservers.txt ]; then
+            echo "📁 Name servers saved to nameservers.txt"
+            cat nameservers.txt
+          fi
+        fi
+
     - name: Create GitHub-Based Terraform Variables
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
@@ -282,7 +324,7 @@ jobs:
         sms_api_domain      = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
         
         # Route53 Configuration
-        route53_zone_id = "${{ vars.ROUTE53_ZONE_ID || '' }}"
+        route53_zone_id = "${{ env.ROUTE53_ZONE_ID || vars.ROUTE53_ZONE_ID || '' }}"
         alb_dns_name    = "${{ vars.ALB_DNS_NAME || '' }}"
         alb_zone_id     = "${{ vars.ALB_ZONE_ID || '' }}"
         
@@ -735,6 +777,40 @@ jobs:
         echo "- ✅ ACM SSL certificates"
         echo "- ✅ Docker containerized applications"
         echo "- ✅ Nginx reverse proxy"
+
+    - name: Update GitHub Repository Variables
+      if: success() && env.ROUTE53_ZONE_ID != ''
+      run: |
+        echo "🔧 Updating GitHub repository variables with infrastructure details..."
+        
+        # Only update if we have a GitHub token and the zone ID was created in this run
+        if [ -n "${{ secrets.GITHUB_TOKEN }}" ] && [ -n "${{ env.ROUTE53_ZONE_ID }}" ]; then
+          echo "📝 Updating ROUTE53_ZONE_ID variable to: ${{ env.ROUTE53_ZONE_ID }}"
+          
+          # Update the repository variable using GitHub CLI or API
+          curl -L \
+            -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/variables/ROUTE53_ZONE_ID" \
+            -d "{\"name\":\"ROUTE53_ZONE_ID\",\"value\":\"${{ env.ROUTE53_ZONE_ID }}\"}" \
+            || echo "⚠️ Failed to update ROUTE53_ZONE_ID variable (may not exist yet)"
+          
+          # Also try to create it if it doesn't exist
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/variables" \
+            -d "{\"name\":\"ROUTE53_ZONE_ID\",\"value\":\"${{ env.ROUTE53_ZONE_ID }}\"}" \
+            || echo "ℹ️ ROUTE53_ZONE_ID variable may already exist"
+          
+          echo "✅ GitHub repository variables updated for future deployments"
+        else
+          echo "⚠️ Skipping GitHub variable update (no token or zone ID)"
+        fi
 
   destroy:
     name: '💥 Destroy Infrastructure'
