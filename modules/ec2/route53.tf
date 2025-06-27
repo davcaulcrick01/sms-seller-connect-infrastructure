@@ -2,18 +2,15 @@
 # Route53 DNS Configuration
 ########################################
 
-# Create or use existing hosted zone
+# Create hosted zone for the domain
 resource "aws_route53_zone" "main" {
-  name    = var.domain_zone_name
-  comment = "SMS Seller Connect - Managed by Terraform"
+  name = var.domain_zone_name
 
   tags = merge(
     var.tags,
     {
-      Name        = var.domain_zone_name
-      Environment = var.environment
-      Purpose     = "SMS Seller Connect DNS"
-      ManagedBy   = "Terraform"
+      Name    = "${local.name_prefix}-hosted-zone"
+      Purpose = "DNS zone for ${var.domain_zone_name}"
     }
   )
 }

@@ -33,10 +33,10 @@ data "aws_subnets" "public" {
     values = ["available"]
   }
 
-  # Filter for public subnets (those with internet gateway route)
+  # Filter for public subnets (those with map_public_ip_on_launch = true)
   filter {
-    name   = "route-table-association.route-table.route.gateway-id"
-    values = ["igw-*"]
+    name   = "map-public-ip-on-launch"
+    values = ["true"]
   }
 }
 
