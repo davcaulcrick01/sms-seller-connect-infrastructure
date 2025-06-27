@@ -104,12 +104,12 @@ output "carrental_api_url" {
 
 output "config_bucket_name" {
   description = "Name of the S3 configuration bucket"
-  value       = aws_s3_bucket.config_bucket.bucket
+  value       = aws_s3_bucket.sms_seller_connect_bucket.bucket
 }
 
 output "config_bucket_arn" {
   description = "ARN of the S3 configuration bucket"
-  value       = aws_s3_bucket.config_bucket.arn
+  value       = aws_s3_bucket.sms_seller_connect_bucket.arn
 }
 
 ########################################

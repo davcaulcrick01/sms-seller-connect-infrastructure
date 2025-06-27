@@ -66,7 +66,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_cpu" {
   ok_actions          = [aws_sns_topic.car_rental_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
   }
 
   tags = var.tags
@@ -86,7 +86,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_memory" {
   alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
   }
 
   tags = var.tags
@@ -106,7 +106,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_low_disk_space" {
   alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
     Filesystem = "/"
   }
 
@@ -257,9 +257,9 @@ resource "aws_cloudwatch_dashboard" "car_rental_dashboard" {
 
         properties = {
           metrics = [
-            ["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.gray_ec2.id],
-            ["CWAgent", "MemoryUtilization", "InstanceId", aws_instance.gray_ec2.id],
-            ["CWAgent", "DiskSpaceUtilization", "InstanceId", aws_instance.gray_ec2.id, "Filesystem", "/"]
+            ["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id],
+            ["CWAgent", "MemoryUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id],
+            ["CWAgent", "DiskSpaceUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id, "Filesystem", "/"]
           ]
           view    = "timeSeries"
           stacked = false

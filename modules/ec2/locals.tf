@@ -7,7 +7,7 @@ locals {
   instance_type   = var.instance_type
   #ssh_cidr_block  = var.ssh_cidr_block
 
-  # A simple name prefix for tags
-  name_prefix = "SMS"
+  # Dynamic name prefix based on project and environment
+  name_prefix = "${var.project_name}-${var.environment}"
 }
 

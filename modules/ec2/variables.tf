@@ -270,11 +270,6 @@ variable "bucket_acl" {
   type        = string
 }
 
-variable "s3_force_destroy" {
-  description = "Force destroy the S3 bucket (true for non-empty buckets)"
-  type        = bool
-}
-
 ########################################
 # EC2 Module Variables
 ########################################
@@ -485,6 +480,4 @@ variable "allowed_file_types" {
 # Local Variables
 ########################################
 
-locals {
-  name_prefix = "${var.project_name}-${var.environment}"
-}
+# Note: Locals are defined in locals.tf
