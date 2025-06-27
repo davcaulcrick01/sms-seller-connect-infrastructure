@@ -314,14 +314,25 @@ jobs:
         # Source environment variables
         source terraform.env
         
-        # Create plan with detailed exit codes
+        # Debug: Show some environment variables are set
+        echo "🔍 DEBUG: Checking key variables..."
+        echo "Environment: $TF_VAR_environment"
+        echo "Project: $TF_VAR_project_name"
+        echo "Region: $TF_VAR_region"
+        
+        # Create plan with detailed exit codes and disable input prompts
+        echo "🚀 Starting terraform plan with timeout protection..."
         set +e
-        terraform plan -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
+        timeout 300 terraform plan -input=false -detailed-exitcode -no-color -out=tfplan | tee plan_output.txt
         exit_code=$?
         set -e
         
-        # Show the plan output
-        cat plan_output.txt
+        # Check if timeout occurred
+        if [ $exit_code -eq 124 ]; then
+          echo "❌ Terraform plan timed out after 5 minutes"
+          echo "🔍 Checking for stuck processes or missing variables..."
+          exit 1
+        fi
         
         echo "🔍 DEBUG: Terraform plan exit code was: $exit_code"
         
