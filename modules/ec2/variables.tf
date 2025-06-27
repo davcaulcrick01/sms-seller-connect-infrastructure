@@ -416,13 +416,15 @@ variable "ngrok_subdomain" {
 variable "start_ngrok" {
   description = "Whether to start ngrok"
   type        = bool
+  default     = true
 }
 
 # Application Settings
 variable "debug" {
   description = "Debug mode"
   type        = bool
-}
+  default     = true
+  }
 
 variable "log_level" {
   description = "Log level"
