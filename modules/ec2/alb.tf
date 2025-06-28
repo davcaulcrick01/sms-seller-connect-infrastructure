@@ -43,7 +43,7 @@ resource "aws_security_group" "alb_sg" {
   )
 }
 
-# Application Load Balancer
+# Application Load Balancer #
 resource "aws_lb" "main" {
   name               = "${local.name_prefix}-alb"
   internal           = false
