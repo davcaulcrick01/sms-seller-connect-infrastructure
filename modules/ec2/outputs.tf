@@ -146,15 +146,15 @@ output "acm_certificate_domain" {
 
 output "route53_zone_id" {
   description = "The hosted zone ID"
-  value       = aws_route53_zone.main.zone_id
+  value       = data.aws_route53_zone.main.zone_id
 }
 
 output "route53_name_servers" {
   description = "The name servers for the hosted zone (configure these with your domain registrar)"
-  value       = aws_route53_zone.main.name_servers
+  value       = data.aws_route53_zone.main.name_servers
 }
 
 output "route53_zone_name" {
   description = "The hosted zone name"
-  value       = aws_route53_zone.main.name
+  value       = data.aws_route53_zone.main.name
 }
