@@ -1,7 +1,6 @@
 ########################################
 # Route53 DNS Configuration
 ########################################
-
 # Use the existing Route53 Registrar hosted zone (the one domain is currently pointing to)
 # Zone ID: Z08490662ZJ5BCQ8SQBXG - "HostedZone created by Route53 Registrar"
 data "aws_route53_zone" "main" {
