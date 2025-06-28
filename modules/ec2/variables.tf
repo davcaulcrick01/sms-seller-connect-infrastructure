@@ -20,6 +20,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "Key name for the EC2 instance"
   type        = string
+  default     = "car-rental-key"
 }
 
 # EC2 Instance Name

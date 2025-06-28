@@ -4,7 +4,7 @@
 
 # Use existing key pair for EC2 access
 data "aws_key_pair" "existing_key" {
-  key_name = "car-rental-key"
+  key_name = var.key_name
 }
 
 # Note: EIP not needed since we use ALB for public access
