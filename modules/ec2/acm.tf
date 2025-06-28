@@ -44,12 +44,12 @@ resource "aws_route53_record" "cert_validation" {
   zone_id         = data.aws_route53_zone.main.zone_id
 }
 
-# Skip ACM certificate validation for faster deployment
-# Note: Certificate will be validated automatically by AWS
-# resource "aws_acm_certificate_validation" "main" {
-#   certificate_arn         = aws_acm_certificate.main.arn
-#   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-#   timeouts {
-#     create = "10m"
-#   }
-# } 
+# ACM certificate validation - wait for certificate to be validated
+resource "aws_acm_certificate_validation" "main" {
+  certificate_arn         = aws_acm_certificate.main.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+  
+  timeouts {
+    create = "10m"
+  }
+} 
