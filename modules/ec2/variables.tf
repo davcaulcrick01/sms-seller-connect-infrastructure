@@ -10,7 +10,7 @@ variable "ami_id" {
   type        = string
 }
 
-# EC2 Instance Type
+# EC2 Instance Type #
 variable "instance_type" {
   description = "Instance type for the EC2 instance"
   type        = string
