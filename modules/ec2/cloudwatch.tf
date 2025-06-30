@@ -328,6 +328,10 @@ resource "aws_iam_role" "sms_cloudwatch_agent_role" {
   })
 
   tags = var.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Attach CloudWatch Agent Policy

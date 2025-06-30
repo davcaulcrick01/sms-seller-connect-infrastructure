@@ -95,6 +95,19 @@ resource "aws_instance" "sms_seller_connect_ec2" {
     ENVIRONMENT = var.environment
   }))
 
+  # Lifecycle rule to prevent accidental destruction
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      # Ignore changes to user_data after initial creation to prevent recreation
+      user_data,
+      # Ignore AMI changes to prevent instance replacement
+      ami,
+      # Allow instance type changes for scaling
+      # instance_type,
+    ]
+  }
+
   tags = merge(
     var.tags,
     {

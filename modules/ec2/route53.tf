@@ -6,6 +6,15 @@
 resource "aws_route53_zone" "main" {
   name = var.domain_zone_name
 
+  # Lifecycle rule to prevent accidental destruction of DNS zone
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      # Allow comment changes
+      # comment,
+    ]
+  }
+
   tags = merge(
     var.tags,
     {
