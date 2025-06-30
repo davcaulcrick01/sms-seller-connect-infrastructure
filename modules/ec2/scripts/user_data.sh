@@ -242,6 +242,23 @@ start_services() {
     
     cd /app/sms-seller-connect
     
+    # Debug: Log the image variables before creating .env file
+    log_to_cloudwatch "INFO" "DEBUG: BACKEND_IMAGE=${BACKEND_IMAGE}"
+    log_to_cloudwatch "INFO" "DEBUG: FRONTEND_IMAGE=${FRONTEND_IMAGE}"
+    log_to_cloudwatch "INFO" "DEBUG: SMS_API_DOMAIN=${SMS_API_DOMAIN}"
+    log_to_cloudwatch "INFO" "DEBUG: SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}"
+    
+    # Set fallback values if variables are empty
+    if [ -z "${BACKEND_IMAGE}" ]; then
+        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using fallback: ${BACKEND_IMAGE}"
+    fi
+    
+    if [ -z "${FRONTEND_IMAGE}" ]; then
+        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using fallback: ${FRONTEND_IMAGE}"
+    fi
+    
     # Create .env file for Docker Compose with all variables
     log_to_cloudwatch "INFO" "Creating .env file for Docker Compose..."
     cat > .env << EOF
