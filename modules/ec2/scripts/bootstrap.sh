@@ -53,63 +53,69 @@ main() {
     
     # Export all environment variables for the user_data script
     log_message "INFO" "Exporting environment variables..."
-    export AWS_REGION="$AWS_REGION"
-    export S3_BUCKET="$S3_BUCKET"
-    export CLOUDWATCH_LOG_GROUP="$CLOUDWATCH_LOG_GROUP"
-    export CLOUDWATCH_LOG_STREAM="$CLOUDWATCH_LOG_STREAM"
+    export AWS_REGION="${AWS_REGION}"
+    export S3_BUCKET="${S3_BUCKET}"
+    export CLOUDWATCH_LOG_GROUP="${CLOUDWATCH_LOG_GROUP}"
+    export CLOUDWATCH_LOG_STREAM="${CLOUDWATCH_LOG_STREAM}"
     
     # Docker Images
-    export BACKEND_IMAGE="$BACKEND_IMAGE"
-    export FRONTEND_IMAGE="$FRONTEND_IMAGE"
+    export BACKEND_IMAGE="${BACKEND_IMAGE}"
+    export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
     
     # Domain Configuration
-    export SMS_API_DOMAIN="$SMS_API_DOMAIN"
-    export SMS_FRONTEND_DOMAIN="$SMS_FRONTEND_DOMAIN"
+    export SMS_API_DOMAIN="${SMS_API_DOMAIN}"
+    export SMS_FRONTEND_DOMAIN="${SMS_FRONTEND_DOMAIN}"
     
     # Database Configuration
-    export DB_HOST="$DB_HOST"
-    export DB_PORT="$DB_PORT"
-    export DB_NAME="$DB_NAME"
-    export DB_USER="$DB_USER"
-    export DB_PASSWORD="$DB_PASSWORD"
+    export DB_HOST="${DB_HOST}"
+    export DB_PORT="${DB_PORT}"
+    export DB_NAME="${DB_NAME}"
+    export DB_USER="${DB_USER}"
+    export DB_PASSWORD="${DB_PASSWORD}"
     
     # Application Configuration
-    export SECRET_KEY="$SECRET_KEY"
-    export JWT_SECRET_KEY="$JWT_SECRET_KEY"
-    export TWILIO_ACCOUNT_SID="$TWILIO_ACCOUNT_SID"
-    export TWILIO_AUTH_TOKEN="$TWILIO_AUTH_TOKEN"
-    export TWILIO_PHONE_NUMBER="$TWILIO_PHONE_NUMBER"
-    export OPENAI_API_KEY="$OPENAI_API_KEY"
-    export OPENAI_MODEL="$OPENAI_MODEL"
-    export OPENAI_TEMPERATURE="$OPENAI_TEMPERATURE"
+    export SECRET_KEY="${SECRET_KEY}"
+    export JWT_SECRET_KEY="${JWT_SECRET_KEY}"
+    export TWILIO_ACCOUNT_SID="${TWILIO_ACCOUNT_SID}"
+    export TWILIO_AUTH_TOKEN="${TWILIO_AUTH_TOKEN}"
+    export TWILIO_PHONE_NUMBER="${TWILIO_PHONE_NUMBER}"
+    export OPENAI_API_KEY="${OPENAI_API_KEY}"
+    export OPENAI_MODEL="${OPENAI_MODEL}"
+    export OPENAI_TEMPERATURE="${OPENAI_TEMPERATURE}"
     
     # SendGrid Configuration
-    export SENDGRID_API_KEY="$SENDGRID_API_KEY"
-    export SENDGRID_FROM_EMAIL="$SENDGRID_FROM_EMAIL"
+    export SENDGRID_API_KEY="${SENDGRID_API_KEY}"
+    export SENDGRID_FROM_EMAIL="${SENDGRID_FROM_EMAIL}"
     
     # AWS Application Configuration
-    export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"
-    export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
-    export S3_BUCKET_NAME="$S3_BUCKET_NAME"
+    export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+    export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+    export S3_BUCKET_NAME="${S3_BUCKET_NAME}"
     
     # Hot Lead Alert Configuration
-    export HOT_LEAD_EMAIL_RECIPIENTS="$HOT_LEAD_EMAIL_RECIPIENTS"
-    export HOT_LEAD_SMS_RECIPIENTS="$HOT_LEAD_SMS_RECIPIENTS"
+    export HOT_LEAD_EMAIL_RECIPIENTS="${HOT_LEAD_EMAIL_RECIPIENTS}"
+    export HOT_LEAD_SMS_RECIPIENTS="${HOT_LEAD_SMS_RECIPIENTS}"
     
     # Rate Limiting Configuration
-    export RATE_LIMIT_PER_MINUTE="$RATE_LIMIT_PER_MINUTE"
-    export RATE_LIMIT_BURST="$RATE_LIMIT_BURST"
+    export RATE_LIMIT_PER_MINUTE="${RATE_LIMIT_PER_MINUTE}"
+    export RATE_LIMIT_BURST="${RATE_LIMIT_BURST}"
     
     # Session Configuration
-    export SESSION_TIMEOUT_MINUTES="$SESSION_TIMEOUT_MINUTES"
-    export REMEMBER_ME_DAYS="$REMEMBER_ME_DAYS"
+    export SESSION_TIMEOUT_MINUTES="${SESSION_TIMEOUT_MINUTES}"
+    export REMEMBER_ME_DAYS="${REMEMBER_ME_DAYS}"
     
     # File Upload Configuration
-    export MAX_FILE_SIZE_MB="$MAX_FILE_SIZE_MB"
-    export ALLOWED_FILE_TYPES="$ALLOWED_FILE_TYPES"
+    export MAX_FILE_SIZE_MB="${MAX_FILE_SIZE_MB}"
+    export ALLOWED_FILE_TYPES="${ALLOWED_FILE_TYPES}"
     
     # Environment
-    export ENVIRONMENT="$ENVIRONMENT"
+    export ENVIRONMENT="${ENVIRONMENT}"
+    
+    # Debug: Log some key variables to verify they're set
+    log_message "INFO" "DEBUG: BACKEND_IMAGE=${BACKEND_IMAGE}"
+    log_message "INFO" "DEBUG: FRONTEND_IMAGE=${FRONTEND_IMAGE}"
+    log_message "INFO" "DEBUG: SMS_API_DOMAIN=${SMS_API_DOMAIN}"
+    log_message "INFO" "DEBUG: DB_HOST=${DB_HOST}"
     
     # Execute the main user_data script
     log_message "INFO" "Executing main user_data.sh script..."
