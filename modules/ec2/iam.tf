@@ -9,7 +9,6 @@ data "aws_iam_policy" "ec2_s3_access_policy" {
 data "aws_iam_policy" "ecr_policy" {
   name = "ecr-access-policy"
 }
-
 # Create the missing EC2 combined role
 resource "aws_iam_role" "ec2_combined_role" {
   name = "ec2_combined_role"
