@@ -4,7 +4,7 @@
 
 # Use existing key pair for EC2 access
 data "aws_key_pair" "existing_key" {
-  key_name = var.key_name
+  key_name = "car-rental-key"
 }
 
 # Note: EIP not needed since we use ALB for public access
@@ -16,7 +16,7 @@ resource "aws_instance" "sms_seller_connect_ec2" {
   key_name               = data.aws_key_pair.existing_key.key_name
   subnet_id              = data.aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_instance_profile.name
+  iam_instance_profile   = data.aws_iam_instance_profile.ec2_profile.name
 
   root_block_device {
     volume_type = "gp3"

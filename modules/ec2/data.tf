@@ -45,6 +45,11 @@ data "aws_subnet" "public_subnet" {
   id = data.aws_subnets.public.ids[0]
 }
 
+# Secondary subnet for ALB (different from primary)
+data "aws_subnet" "public_subnet_b" {
+  id = length(data.aws_subnets.public.ids) > 1 ? data.aws_subnets.public.ids[1] : data.aws_subnets.public.ids[0]
+}
+
 # Get availability zones
 data "aws_availability_zones" "available" {
   state = "available"

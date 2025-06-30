@@ -242,11 +242,6 @@ start_services() {
     
     cd /app/sms-seller-connect
     
-    # Debug: Log the current environment variables
-    log_to_cloudwatch "INFO" "Debug - Environment variables:"
-    log_to_cloudwatch "INFO" "BACKEND_IMAGE=${BACKEND_IMAGE}"
-    log_to_cloudwatch "INFO" "FRONTEND_IMAGE=${FRONTEND_IMAGE}"
-    
     # Create .env file for Docker Compose with all variables
     log_to_cloudwatch "INFO" "Creating .env file for Docker Compose..."
     cat > .env << EOF
@@ -284,21 +279,13 @@ MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
 ALLOWED_FILE_TYPES=${ALLOWED_FILE_TYPES}
 EOF
     
-    # Set permissions on .env file
-    sudo chown ec2-user:ec2-user .env
-    sudo chmod 644 .env
-    
-    # Debug: Show .env file contents
-    log_to_cloudwatch "INFO" "Debug - .env file contents:"
-    head -5 .env | while read line; do log_to_cloudwatch "INFO" "  $line"; done
-    
-    # Pull latest images with explicit environment
+    # Pull latest images
     log_to_cloudwatch "INFO" "Pulling latest images from ECR..."
-    sudo --preserve-env=BACKEND_IMAGE,FRONTEND_IMAGE docker-compose pull
+    sudo -E docker-compose pull
     
-    # Start services with explicit environment
+    # Start services
     log_to_cloudwatch "INFO" "Starting services with Docker Compose..."
-    sudo --preserve-env=BACKEND_IMAGE,FRONTEND_IMAGE docker-compose up -d
+    sudo -E docker-compose up -d
     
     log_to_cloudwatch "INFO" "Services started successfully"
 }

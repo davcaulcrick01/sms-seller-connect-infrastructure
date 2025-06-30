@@ -53,7 +53,7 @@ resource "aws_cloudwatch_log_group" "sms_system_logs" {
 
 # High CPU Utilization Alarm
 resource "aws_cloudwatch_metric_alarm" "ec2_high_cpu" {
-  alarm_name          = "sms-seller-connect-ec2-high-cpu"
+  alarm_name          = "car-rental-ec2-high-cpu"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -74,7 +74,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_cpu" {
 
 # High Memory Utilization Alarm
 resource "aws_cloudwatch_metric_alarm" "ec2_high_memory" {
-  alarm_name          = "sms-seller-connect-ec2-high-memory"
+  alarm_name          = "car-rental-ec2-high-memory"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "MemoryUtilization"
@@ -94,7 +94,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_memory" {
 
 # Low Disk Space Alarm
 resource "aws_cloudwatch_metric_alarm" "ec2_low_disk_space" {
-  alarm_name          = "sms-seller-connect-ec2-low-disk-space"
+  alarm_name          = "car-rental-ec2-low-disk-space"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "DiskSpaceUtilization"
@@ -115,7 +115,7 @@ resource "aws_cloudwatch_metric_alarm" "ec2_low_disk_space" {
 
 # Application Health Check Alarm
 resource "aws_cloudwatch_metric_alarm" "app_health_check" {
-  alarm_name          = "sms-seller-connect-app-health-check"
+  alarm_name          = "car-rental-app-health-check"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "HTTPCode_Target_2XX_Count"
@@ -134,31 +134,31 @@ resource "aws_cloudwatch_metric_alarm" "app_health_check" {
 }
 
 ########################################
-# Custom Metrics for SMS Seller Connect Business
+# Custom Metrics for Car Rental Business
 ########################################
 
-# Custom Metric for Failed SMS Sends
-resource "aws_cloudwatch_log_metric_filter" "failed_sms" {
-  name           = "FailedSMS"
+# Custom Metric for Failed Bookings
+resource "aws_cloudwatch_log_metric_filter" "failed_bookings" {
+  name           = "FailedBookings"
   log_group_name = aws_cloudwatch_log_group.sms_seller_connect_app_logs.name
-  pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"SMS send failed*\"]"
+  pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Booking failed*\"]"
 
   metric_transformation {
-    name      = "FailedSMSCount"
-    namespace = "SMSSellerConnect/Business"
+    name      = "FailedBookingCount"
+    namespace = "CarRental/Business"
     value     = "1"
   }
 }
 
-# Custom Metric for Lead Processing Failures
-resource "aws_cloudwatch_log_metric_filter" "lead_processing_failures" {
-  name           = "LeadProcessingFailures"
+# Custom Metric for Payment Failures
+resource "aws_cloudwatch_log_metric_filter" "payment_failures" {
+  name           = "PaymentFailures"
   log_group_name = aws_cloudwatch_log_group.sms_seller_connect_app_logs.name
-  pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Lead processing failed*\"]"
+  pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Payment failed*\"]"
 
   metric_transformation {
-    name      = "LeadProcessingFailureCount"
-    namespace = "SMSSellerConnect/Business"
+    name      = "PaymentFailureCount"
+    namespace = "CarRental/Business"
     value     = "1"
   }
 }
@@ -171,7 +171,7 @@ resource "aws_cloudwatch_log_metric_filter" "database_errors" {
 
   metric_transformation {
     name      = "DatabaseErrorCount"
-    namespace = "SMSSellerConnect/Technical"
+    namespace = "CarRental/Technical"
     value     = "1"
   }
 }
@@ -180,34 +180,34 @@ resource "aws_cloudwatch_log_metric_filter" "database_errors" {
 # Business Logic Alarms
 ########################################
 
-# Failed SMS Alarm
-resource "aws_cloudwatch_metric_alarm" "failed_sms_alarm" {
-  alarm_name          = "sms-seller-connect-failed-sms"
+# Failed Bookings Alarm
+resource "aws_cloudwatch_metric_alarm" "failed_bookings_alarm" {
+  alarm_name          = "car-rental-failed-bookings"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
-  metric_name         = "FailedSMSCount"
-  namespace           = "SMSSellerConnect/Business"
+  metric_name         = "FailedBookingCount"
+  namespace           = "CarRental/Business"
   period              = "300"
   statistic           = "Sum"
   threshold           = "3"
-  alarm_description   = "Alert when more than 3 SMS sends fail in 5 minutes"
+  alarm_description   = "Alert when more than 3 bookings fail in 5 minutes"
   alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
   treat_missing_data  = "notBreaching"
 
   tags = var.tags
 }
 
-# Lead Processing Failures Alarm
-resource "aws_cloudwatch_metric_alarm" "lead_processing_failures_alarm" {
-  alarm_name          = "sms-seller-connect-lead-processing-failures"
+# Payment Failures Alarm
+resource "aws_cloudwatch_metric_alarm" "payment_failures_alarm" {
+  alarm_name          = "car-rental-payment-failures"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
-  metric_name         = "LeadProcessingFailureCount"
-  namespace           = "SMSSellerConnect/Business"
+  metric_name         = "PaymentFailureCount"
+  namespace           = "CarRental/Business"
   period              = "300"
   statistic           = "Sum"
   threshold           = "2"
-  alarm_description   = "Alert when more than 2 lead processing failures occur in 5 minutes"
+  alarm_description   = "Alert when more than 2 payments fail in 5 minutes"
   alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
   treat_missing_data  = "notBreaching"
 
@@ -243,8 +243,8 @@ resource "aws_sns_topic_subscription" "email_alerts" {
 # CloudWatch Dashboard
 ########################################
 
-resource "aws_cloudwatch_dashboard" "sms_seller_connect_dashboard" {
-  dashboard_name = "sms-seller-connect-monitoring"
+resource "aws_cloudwatch_dashboard" "car_rental_dashboard" {
+  dashboard_name = "car-rental-monitoring"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -277,9 +277,9 @@ resource "aws_cloudwatch_dashboard" "sms_seller_connect_dashboard" {
 
         properties = {
           metrics = [
-            ["SMSSellerConnect/Business", "FailedSMSCount"],
-            ["SMSSellerConnect/Business", "LeadProcessingFailureCount"],
-            ["SMSSellerConnect/Technical", "DatabaseErrorCount"]
+            ["CarRental/Business", "FailedBookingCount"],
+            ["CarRental/Business", "PaymentFailureCount"],
+            ["CarRental/Technical", "DatabaseErrorCount"]
           ]
           view    = "timeSeries"
           stacked = false
@@ -348,7 +348,7 @@ data "aws_iam_instance_profile" "cloudwatch_agent_profile" {
 
 # Store CloudWatch Agent config in Parameter Store
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
-  name      = "/sms-seller-connect/cloudwatch-agent-config"
+  name      = "/car-rental/cloudwatch-agent-config"
   type      = "String"
   overwrite = true
   value = jsonencode({
