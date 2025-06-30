@@ -132,11 +132,11 @@ EOF
     log_to_cloudwatch "INFO" "Docker and Docker Compose installation completed"
 }
 
-# Function to install AWS CLI
+# Function to install AWS CLI and required tools
 install_aws_cli() {
-    log_to_cloudwatch "INFO" "Installing AWS CLI..."
-    sudo yum install -y aws-cli
-    log_to_cloudwatch "INFO" "AWS CLI installation completed"
+    log_to_cloudwatch "INFO" "Installing AWS CLI and required tools..."
+    sudo yum install -y aws-cli gettext
+    log_to_cloudwatch "INFO" "AWS CLI and tools installation completed"
 }
 
 # Function to verify environment variables
@@ -242,13 +242,63 @@ start_services() {
     
     cd /app/sms-seller-connect
     
-    # Pull latest images
-    log_to_cloudwatch "INFO" "Pulling latest images from ECR..."
-    sudo docker-compose pull
+    # Debug: Log the current environment variables
+    log_to_cloudwatch "INFO" "Debug - Environment variables:"
+    log_to_cloudwatch "INFO" "BACKEND_IMAGE=${BACKEND_IMAGE}"
+    log_to_cloudwatch "INFO" "FRONTEND_IMAGE=${FRONTEND_IMAGE}"
     
-    # Start services
+    # Create .env file for Docker Compose with all variables
+    log_to_cloudwatch "INFO" "Creating .env file for Docker Compose..."
+    cat > .env << EOF
+BACKEND_IMAGE=${BACKEND_IMAGE}
+FRONTEND_IMAGE=${FRONTEND_IMAGE}
+SMS_API_DOMAIN=${SMS_API_DOMAIN}
+SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+OPENAI_MODEL=${OPENAI_MODEL}
+OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+FLASK_SECRET_KEY=${SECRET_KEY}
+SECRET_KEY=${SECRET_KEY}
+JWT_SECRET_KEY=${JWT_SECRET_KEY}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+AWS_REGION=${AWS_REGION}
+S3_BUCKET_NAME=${S3_BUCKET_NAME}
+SENDGRID_API_KEY=${SENDGRID_API_KEY}
+SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+HOT_LEAD_EMAIL_RECIPIENTS=${HOT_LEAD_EMAIL_RECIPIENTS}
+HOT_LEAD_SMS_RECIPIENTS=${HOT_LEAD_SMS_RECIPIENTS}
+RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE}
+RATE_LIMIT_BURST=${RATE_LIMIT_BURST}
+SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES}
+REMEMBER_ME_DAYS=${REMEMBER_ME_DAYS}
+MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
+ALLOWED_FILE_TYPES=${ALLOWED_FILE_TYPES}
+EOF
+    
+    # Set permissions on .env file
+    sudo chown ec2-user:ec2-user .env
+    sudo chmod 644 .env
+    
+    # Debug: Show .env file contents
+    log_to_cloudwatch "INFO" "Debug - .env file contents:"
+    head -5 .env | while read line; do log_to_cloudwatch "INFO" "  $line"; done
+    
+    # Pull latest images with explicit environment
+    log_to_cloudwatch "INFO" "Pulling latest images from ECR..."
+    sudo --preserve-env=BACKEND_IMAGE,FRONTEND_IMAGE docker-compose pull
+    
+    # Start services with explicit environment
     log_to_cloudwatch "INFO" "Starting services with Docker Compose..."
-    sudo docker-compose up -d
+    sudo --preserve-env=BACKEND_IMAGE,FRONTEND_IMAGE docker-compose up -d
     
     log_to_cloudwatch "INFO" "Services started successfully"
 }

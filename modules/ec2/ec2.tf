@@ -66,7 +66,7 @@ resource "aws_instance" "sms_seller_connect_ec2" {
     SENDGRID_API_KEY    = var.sendgrid_api_key
     SENDGRID_FROM_EMAIL = var.sendgrid_from_email
 
-    # AWS application configuration
+    # AWS application configuration #
     AWS_ACCESS_KEY_ID     = var.aws_access_key_id
     AWS_SECRET_ACCESS_KEY = var.aws_secret_access_key
     S3_BUCKET_NAME        = "grey-database-bucket"

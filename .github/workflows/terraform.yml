@@ -488,6 +488,17 @@ jobs:
         echo "Project: ${TF_VAR_project_name:-NOT_SET}"
         echo "Instance Type: ${TF_VAR_instance_type:-NOT_SET}"
         
+        # Verify terraform.tfvars file exists
+        echo "📁 Checking terraform.tfvars file..."
+        if [ -f "terraform.tfvars" ]; then
+          echo "✅ terraform.tfvars file found"
+          echo "📊 File size: $(wc -l < terraform.tfvars) lines"
+        else
+          echo "❌ terraform.tfvars file not found"
+          echo "📁 Files in current directory:"
+          ls -la
+        fi
+        
         # Verify problematic tag variables are not set
         echo "🔍 Verifying tag variables are not set..."
         if [ -n "${TF_VAR_tags:-}" ]; then
@@ -684,7 +695,7 @@ jobs:
             echo "📋 Attempt $attempt/$max_attempts: Running terraform plan..."
             
             set +e
-            timeout 300 terraform plan -input=false -detailed-exitcode -no-color -out=tfplan 2>&1 | tee plan_output.txt
+            timeout 300 terraform plan -var-file=terraform.tfvars -input=false -detailed-exitcode -no-color -out=tfplan 2>&1 | tee plan_output.txt
             exit_code=$?
             set -e
             
@@ -1073,10 +1084,10 @@ jobs:
         
         if [ -f "tfplan" ]; then
           echo "📋 Applying saved plan..."
-          terraform apply -auto-approve tfplan
+          terraform apply -var-file=terraform.tfvars -auto-approve tfplan
         else
           echo "📋 Creating and applying new plan..."
-          terraform apply -auto-approve
+          terraform apply -var-file=terraform.tfvars -auto-approve
         fi
         
         echo "✅ SMS Seller Connect infrastructure deployment completed!"
@@ -1636,7 +1647,7 @@ jobs:
       run: |
         echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
         
-        terraform destroy -auto-approve
+        terraform destroy -var-file=terraform.tfvars -auto-approve
         echo "🗑️ Destruction completed!"
 
     - name: Display Destroy Results
