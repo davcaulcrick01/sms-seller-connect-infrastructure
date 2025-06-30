@@ -238,16 +238,24 @@ jobs:
       run: |
         echo "🔒 Running security scan with tfsec..."
         
-        # Install tfsec
-        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        # Install tfsec using GitHub releases
+        echo "📥 Downloading tfsec..."
+        TFSEC_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/tfsec/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        curl -sSfL "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" -o tfsec
+        chmod +x tfsec
+        
+        echo "✅ tfsec installed successfully (version: ${TFSEC_VERSION})"
         
         # Run tfsec with custom configuration
+        echo "🔍 Running security scan..."
         ./tfsec . --format json --out tfsec-results.json || true
         
         # Display results
         if [ -f tfsec-results.json ]; then
           echo "📊 Security scan results:"
           cat tfsec-results.json | jq '.results[] | select(.severity == "HIGH" or .severity == "CRITICAL") | {rule_id: .rule_id, severity: .severity, description: .description}' || echo "No high/critical issues found"
+        else
+          echo "ℹ️ No security scan results file generated"
         fi
 
   plan:
