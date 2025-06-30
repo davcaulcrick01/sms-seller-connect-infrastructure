@@ -276,30 +276,42 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Verify Backend Health
-      working-directory: ${{ env.TF_WORKING_DIR }}
-      continue-on-error: true
+    - name: Setup Terraform Backend
+      working-directory: ${{ github.workspace }}/Infrastructure/sms-seller-connect
       run: |
-        echo "🔍 Verifying backend health..."
+        echo "🔧 Setting up Terraform backend infrastructure..."
         
-        # Check S3 bucket
+        # Check if backend resources exist
+        BUCKET_EXISTS=false
+        TABLE_EXISTS=false
+        
         if aws s3 ls "s3://${{ env.STATE_BUCKET }}" > /dev/null 2>&1; then
-          echo "✅ S3 bucket accessible"
+          echo "✅ S3 bucket exists"
+          BUCKET_EXISTS=true
         else
-          echo "⚠️ S3 bucket not accessible from GitHub Actions runner"
-          echo "ℹ️ This might be due to bucket policies or IAM permissions"
-          echo "ℹ️ Terraform init will create the bucket if it doesn't exist"
+          echo "⚠️ S3 bucket not found"
         fi
         
-        # Check DynamoDB table
         if aws dynamodb describe-table --table-name "${{ env.LOCK_TABLE }}" > /dev/null 2>&1; then
-          echo "✅ DynamoDB lock table exists"
+          echo "✅ DynamoDB table exists"
+          TABLE_EXISTS=true
         else
-          echo "⚠️ DynamoDB lock table not accessible"
-          echo "ℹ️ Terraform init will create the table if it doesn't exist"
+          echo "⚠️ DynamoDB table not found"
         fi
         
-        echo "✅ Backend health check completed (non-blocking)"
+        # Create backend resources if they don't exist
+        if [ "$BUCKET_EXISTS" = false ] || [ "$TABLE_EXISTS" = false ]; then
+          echo "🚀 Creating missing backend resources..."
+          
+          cd backend-setup
+          terraform init
+          terraform plan -out=backend.tfplan
+          terraform apply -auto-approve backend.tfplan
+          
+          echo "✅ Backend resources created successfully"
+        else
+          echo "✅ All backend resources exist"
+        fi
 
     - name: Terraform Init with Backend
       working-directory: ${{ env.TF_WORKING_DIR }}
