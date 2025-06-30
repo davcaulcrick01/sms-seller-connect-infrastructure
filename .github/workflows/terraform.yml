@@ -34,7 +34,7 @@ on:
 env:
   # Terraform Configuration
   TF_VERSION: '1.5.7'
-  TF_WORKING_DIR: './modules/ec2'
+  TF_WORKING_DIR: 'Infrastructure/sms-seller-connect/modules/ec2'
   
   # AWS Configuration
   AWS_REGION: 'us-east-1'
@@ -79,6 +79,24 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Navigate to Infrastructure Directory
+      run: |
+        echo "📁 Repository structure:"
+        ls -la
+        echo "🔍 Looking for Infrastructure directory..."
+        if [ -d "Infrastructure/sms-seller-connect" ]; then
+          echo "✅ Found Infrastructure/sms-seller-connect directory"
+          cd Infrastructure/sms-seller-connect
+          echo "📂 Current directory: $(pwd)"
+          echo "📋 Contents:"
+          ls -la
+        else
+          echo "❌ Infrastructure/sms-seller-connect directory not found"
+          echo "🔍 Available directories:"
+          find . -type d -maxdepth 2
+          exit 1
+        fi
 
     - name: Verify Working Directory
       working-directory: ${{ env.TF_WORKING_DIR }}
