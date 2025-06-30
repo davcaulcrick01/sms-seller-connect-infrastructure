@@ -57,6 +57,6 @@ resource "aws_iam_role_policy_attachment" "ecr_policy_attachment" {
 
 # Use existing instance profile for reference in EC2 configuration
 data "aws_iam_instance_profile" "ec2_profile" {
-  name = aws_iam_instance_profile.ec2_instance_profile.name
+  name       = aws_iam_instance_profile.ec2_instance_profile.name
   depends_on = [aws_iam_instance_profile.ec2_instance_profile]
 }
