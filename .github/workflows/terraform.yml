@@ -299,7 +299,7 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Setup Terraform Backend
-      working-directory: ${{ github.workspace }}/Infrastructure/sms-seller-connect
+      working-directory: ${{ github.workspace }}
       run: |
         echo "🔧 Setting up Terraform backend infrastructure..."
         
@@ -323,12 +323,10 @@ jobs:
         
         # Create backend resources if they don't exist
         if [ "$BUCKET_EXISTS" = false ] || [ "$TABLE_EXISTS" = false ]; then
-          echo "🚀 Creating missing backend resources..."
+          echo "🚀 Creating missing backend resources using setup script..."
           
-          cd backend-setup
-          terraform init
-          terraform plan -out=backend.tfplan
-          terraform apply -auto-approve backend.tfplan
+          chmod +x setup-backend.sh
+          ./setup-backend.sh
           
           echo "✅ Backend resources created successfully"
         else
