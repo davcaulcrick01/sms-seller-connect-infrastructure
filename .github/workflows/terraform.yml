@@ -34,7 +34,7 @@ on:
 env:
   # Terraform Configuration
   TF_VERSION: '1.5.7'
-  TF_WORKING_DIR: 'Infrastructure/sms-seller-connect/modules/ec2'
+  TF_WORKING_DIR: './modules/ec2'
   
   # AWS Configuration
   AWS_REGION: 'us-east-1'
@@ -80,21 +80,17 @@ jobs:
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
-    - name: Navigate to Infrastructure Directory
+    - name: Verify Repository Structure
       run: |
         echo "📁 Repository structure:"
         ls -la
-        echo "🔍 Looking for Infrastructure directory..."
-        if [ -d "Infrastructure/sms-seller-connect" ]; then
-          echo "✅ Found Infrastructure/sms-seller-connect directory"
-          cd Infrastructure/sms-seller-connect
-          echo "📂 Current directory: $(pwd)"
-          echo "📋 Contents:"
-          ls -la
+        echo "🔍 Checking for Terraform files..."
+        if [ -d "modules/ec2" ]; then
+          echo "✅ Found modules/ec2 directory"
+          echo "📂 Terraform files:"
+          find modules/ec2 -name "*.tf" -type f | head -5
         else
-          echo "❌ Infrastructure/sms-seller-connect directory not found"
-          echo "🔍 Available directories:"
-          find . -type d -maxdepth 2
+          echo "❌ modules/ec2 directory not found"
           exit 1
         fi
 
@@ -226,7 +222,7 @@ jobs:
           echo "$format_output"
           echo ""
           echo "💡 To fix these issues locally, run:"
-          echo "   cd Infrastructure/sms-seller-connect/modules/ec2"
+          echo "   cd modules/ec2"
           echo "   terraform fmt -recursive"
           echo ""
           echo "🔧 Or trigger auto-format by running the workflow with 'format' action"
