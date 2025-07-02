@@ -2457,7 +2457,7 @@ jobs:
         aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh
         chmod +x /tmp/debug-redeploy.sh /tmp/redeploy-application.sh
         
-        echo "🔍 Running pre-deployment diagnostics..."
+        echo "🔍 Running pre-deployment diagnostics...."
         /tmp/debug-redeploy.sh || {
           echo "⚠️ Pre-deployment diagnostics completed with warnings"
         }
