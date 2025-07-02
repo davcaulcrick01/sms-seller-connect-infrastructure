@@ -336,10 +336,35 @@ download_fresh_config() {
 create_environment_file() {
     log_message "INFO" "Creating environment file with current variables..."
     
-    cd "$APP_DIR"
+    # Ensure we can access the app directory
+    if ! cd "$APP_DIR"; then
+        log_message "ERROR" "Cannot access application directory: $APP_DIR"
+        log_message "ERROR" "Directory check:"
+        log_message "ERROR" "  - APP_DIR value: '${APP_DIR}'"
+        log_message "ERROR" "  - Directory exists: $([ -d "$APP_DIR" ] && echo 'yes' || echo 'no')"
+        log_message "ERROR" "  - Current directory: $(pwd)"
+        log_message "ERROR" "  - Directory permissions: $(ls -ld "$APP_DIR" 2>/dev/null || echo 'cannot check')"
+        return 1
+    fi
     
-    # Create .env file with all current environment variables
-    cat > .env << EOF
+    log_message "INFO" "Working in directory: $(pwd)"
+    log_message "INFO" "Directory contents before .env creation:"
+    ls -la 2>/dev/null || log_message "WARN" "Cannot list directory contents"
+    
+    # Backup existing .env if it exists
+    if [ -f ".env" ]; then
+        log_message "INFO" "Backing up existing .env file..."
+        sudo cp .env .env.backup.$(date +%s) || {
+            log_message "WARN" "Could not backup existing .env file, continuing..."
+        }
+    fi
+    
+    # Create temporary .env file first to test write permissions
+    local temp_env_file="/tmp/.env.temp.$$"
+    log_message "INFO" "Creating temporary environment file: $temp_env_file"
+    
+    # Create .env file content in temp location first
+    if ! cat > "$temp_env_file" << EOF
 # Docker Images
 BACKEND_IMAGE=${BACKEND_IMAGE}
 FRONTEND_IMAGE=${FRONTEND_IMAGE}
@@ -399,12 +424,69 @@ ALLOWED_FILE_TYPES=${ALLOWED_FILE_TYPES:-pdf,jpg,jpeg,png,doc,docx,csv}
 # Environment
 ENVIRONMENT=${ENVIRONMENT:-prod}
 EOF
-
-    # Set secure permissions on .env file
-    sudo chown ec2-user:ec2-user .env
-    sudo chmod 600 .env
+    then
+        log_message "ERROR" "Failed to create temporary environment file"
+        log_message "ERROR" "Disk space check:"
+        df -h /tmp || log_message "ERROR" "Cannot check /tmp disk space"
+        return 1
+    fi
     
-    log_message "INFO" "✅ Environment file created with $(wc -l < .env) variables"
+    # Validate the temporary file was created correctly
+    if [ ! -f "$temp_env_file" ]; then
+        log_message "ERROR" "Temporary environment file was not created"
+        return 1
+    fi
+    
+    local line_count=$(wc -l < "$temp_env_file")
+    log_message "INFO" "Temporary environment file created with $line_count lines"
+    
+    # Move the temporary file to the final location
+    log_message "INFO" "Moving environment file to final location..."
+    if ! sudo mv "$temp_env_file" ".env"; then
+        log_message "ERROR" "Failed to move environment file to final location"
+        log_message "ERROR" "Attempting alternative approach..."
+        
+        # Alternative: copy content directly
+        if ! sudo cp "$temp_env_file" ".env"; then
+            log_message "ERROR" "Failed to copy environment file to final location"
+            log_message "ERROR" "Directory permissions:"
+            ls -ld . || log_message "ERROR" "Cannot check current directory permissions"
+            rm -f "$temp_env_file" 2>/dev/null || true
+            return 1
+        fi
+    fi
+    
+    # Clean up temporary file
+    rm -f "$temp_env_file" 2>/dev/null || true
+    
+    # Verify the final file exists
+    if [ ! -f ".env" ]; then
+        log_message "ERROR" "Environment file was not created successfully"
+        return 1
+    fi
+    
+    # Set secure permissions on .env file
+    log_message "INFO" "Setting permissions on .env file..."
+    if ! sudo chown ec2-user:ec2-user .env; then
+        log_message "ERROR" "Failed to set ownership of .env file"
+        log_message "ERROR" "Current file ownership: $(ls -l .env)"
+        return 1
+    fi
+    
+    if ! sudo chmod 600 .env; then
+        log_message "ERROR" "Failed to set permissions on .env file"
+        log_message "ERROR" "Current file permissions: $(ls -l .env)"
+        return 1
+    fi
+    
+    # Final validation
+    local final_line_count=$(wc -l < .env)
+    log_message "INFO" "✅ Environment file created successfully with $final_line_count variables"
+    log_message "INFO" "✅ File permissions: $(ls -l .env)"
+    
+    # Show a sample of the file content (without sensitive data)
+    log_message "INFO" "Environment file sample (showing first 10 lines):"
+    head -10 .env | sed 's/=.*$/=***/' || log_message "WARN" "Cannot display file sample"
 }
 
 # Function to stop existing services gracefully
