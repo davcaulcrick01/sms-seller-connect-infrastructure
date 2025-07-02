@@ -2201,13 +2201,60 @@ jobs:
         export MAX_FILE_SIZE_MB="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
         export ALLOWED_FILE_TYPES="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
         
-        # Download and execute the redeployment script
-        echo "📥 Downloading redeployment script..."
+        # Download diagnostic and redeployment scripts
+        echo "📥 Downloading diagnostic and redeployment scripts..."
+        aws s3 cp s3://sms-seller-connect-bucket/scripts/debug-redeploy.sh /tmp/debug-redeploy.sh
         aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh
-        chmod +x /tmp/redeploy-application.sh
+        chmod +x /tmp/debug-redeploy.sh /tmp/redeploy-application.sh
         
+        echo "🔍 Running pre-deployment diagnostics..."
+        /tmp/debug-redeploy.sh || {
+          echo "⚠️ Pre-deployment diagnostics completed with warnings"
+        }
+        
+        echo ""
         echo "🚀 Executing redeployment..."
-        /tmp/redeploy-application.sh
+        if /tmp/redeploy-application.sh; then
+          echo "✅ Redeployment completed successfully"
+          
+          echo ""
+          echo "🔍 Running post-deployment verification..."
+          /tmp/debug-redeploy.sh || echo "⚠️ Post-deployment diagnostics completed with warnings"
+        else
+          REDEPLOY_EXIT_CODE=\$?
+          echo "❌ Redeployment failed with exit code \$REDEPLOY_EXIT_CODE"
+          
+          echo ""
+          echo "🔍 Running failure diagnostics..."
+          /tmp/debug-redeploy.sh || echo "⚠️ Failure diagnostics completed with warnings"
+          
+          echo ""
+          echo "📋 Additional failure information:"
+          echo "  - Exit code: \$REDEPLOY_EXIT_CODE"
+          echo "  - Timestamp: \$(date)"
+          echo "  - Instance: \$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo 'unknown')"
+          echo "  - Region: \$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null | sed 's/.\$/' || echo 'unknown')"
+          
+          # Try to get recent system logs
+          echo ""
+          echo "📜 Recent system logs:"
+          sudo journalctl --no-pager --lines=50 --since="10 minutes ago" || echo "Cannot access system logs"
+          
+          # Try to get Docker logs if available
+          echo ""
+          echo "🐳 Docker status:"
+          sudo docker ps -a 2>/dev/null || echo "Cannot access Docker"
+          
+          if [ -d "/app/sms-seller-connect" ]; then
+            echo ""
+            echo "📦 Application status:"
+            cd /app/sms-seller-connect
+            sudo docker-compose ps 2>/dev/null || echo "Cannot access Docker Compose"
+            sudo docker-compose logs --tail=50 2>/dev/null || echo "Cannot access Docker Compose logs"
+          fi
+          
+          exit \$REDEPLOY_EXIT_CODE
+        fi
         EOF
         )
         
