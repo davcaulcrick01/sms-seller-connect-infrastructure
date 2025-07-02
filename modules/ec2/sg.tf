@@ -25,7 +25,7 @@ resource "aws_security_group" "ec2_sg" {
     description     = "HTTPS from ALB"
   }
 
-  # Port 8905 from ALB for direct API access
+  # Port 8905 from ALB for direct API accesss
   ingress {
     from_port       = 8905
     to_port         = 8905
