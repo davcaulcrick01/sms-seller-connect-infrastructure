@@ -256,13 +256,25 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         service_name = self.path.split('/logs/')[1]
         
         try:
-            # Get live log for the specified service
+            # Construct and validate the file path to prevent path traversal
             log_file = f"/app/logs/{service_name}.log"
-            if not os.path.exists(log_file):
+            
+            # Normalize the path to resolve any ".." or other path components
+            normalized_path = os.path.normpath(log_file)
+            
+            # Verify that the normalized path stays within the safe directory
+            safe_root = "/app/logs/"
+            if not normalized_path.startswith(safe_root):
+                self.send_error(403, "Access to path outside logs directory is forbidden")
+                return
+            
+            # Check if the validated file exists
+            if not os.path.exists(normalized_path):
                 self.send_error(404, "Log file not found")
                 return
             
-            with open(log_file, 'r') as f:
+            # Use the validated path for file operations
+            with open(normalized_path, 'r') as f:
                 log_content = f.read()
             
             self.send_response(200)

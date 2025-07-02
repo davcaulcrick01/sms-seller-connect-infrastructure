@@ -181,7 +181,7 @@ setup_docker_compose() {
     log_to_cloudwatch "INFO" "Downloading Docker Compose configuration from S3..."
     sudo aws s3 cp s3://${S3_BUCKET}/docker-compose/docker-compose.yml ./docker-compose.yml
     sudo aws s3 cp s3://${S3_BUCKET}/docker-compose/.env.template ./.env.template
-    sudo aws s3 cp s3://${S3_BUCKET}/nginx/nginx.conf ./nginx.conf
+    sudo aws s3 cp s3://${S3_BUCKET}/nginx/nginx.conf ./nginx.conf.template
     sudo aws s3 cp s3://${S3_BUCKET}/scripts/health-check.sh ./health-check.sh
     sudo aws s3 cp s3://${S3_BUCKET}/scripts/health-check-server.py ./health-check-server.py
     
@@ -224,6 +224,10 @@ setup_docker_compose() {
     # Create environment file from template with actual values
     log_to_cloudwatch "INFO" "Creating environment file with configuration..."
     envsubst < .env.template > .env
+    
+    # CRITICAL: Substitute variables in nginx configuration
+    log_to_cloudwatch "INFO" "Substituting variables in nginx configuration..."
+    envsubst '${SMS_API_DOMAIN} ${SMS_FRONTEND_DOMAIN}' < nginx.conf.template > nginx.conf
     
     # Set proper permissions
     sudo chown -R ec2-user:ec2-user /app/sms-seller-connect

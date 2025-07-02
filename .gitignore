@@ -38,7 +38,7 @@ Thumbs.db
 
 # Temporary files
 .tmp/
-temp/
+`temp/
 
 # Terraform files with secrets (should not be committed)
 terraform.tfvars

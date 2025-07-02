@@ -78,18 +78,18 @@ common_tags = {
 ########################################
 
 # Database Configuration
-use_postgres  = true
-db_host       = "YOUR_DB_HOST"
-db_port       = "5437"
-db_name       = "sms_blast"
-db_user       = "YOUR_DB_USER"
-db_password   = "YOUR_DB_PASSWORD"
-database_url  = "postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST:5437/sms_blast"
+use_postgres = true
+db_host      = "YOUR_DATABASE_HOST"
+db_port      = "5432"
+db_name      = "YOUR_DATABASE_NAME"
+db_user      = "YOUR_DATABASE_USER"
+db_password  = "YOUR_SECURE_DATABASE_PASSWORD"
+database_url = "postgresql://YOUR_DATABASE_USER:YOUR_SECURE_DATABASE_PASSWORD@YOUR_DATABASE_HOST:5432/YOUR_DATABASE_NAME"
 
 # Application Security
-flask_secret_key = "YOUR_FLASK_SECRET_KEY"
-secret_key       = "YOUR_SECRET_KEY"
-jwt_secret_key   = "YOUR_JWT_SECRET_KEY"
+flask_secret_key = "GENERATE_A_SECURE_256_BIT_SECRET_KEY"
+secret_key       = "GENERATE_A_SECURE_256_BIT_SECRET_KEY"
+jwt_secret_key   = "GENERATE_A_SECURE_256_BIT_JWT_KEY"
 
 # Twilio Configuration
 twilio_account_sid  = "YOUR_TWILIO_ACCOUNT_SID"
@@ -104,7 +104,7 @@ openai_temperature = "0.3"
 
 # SendGrid Configuration
 sendgrid_api_key    = "YOUR_SENDGRID_API_KEY"
-sendgrid_from_email = "noreply@greyzonesolutions.com"
+sendgrid_from_email = "noreply@yourdomain.com"
 
 # AWS Configuration for Application
 aws_access_key_id     = "YOUR_AWS_ACCESS_KEY_ID"
