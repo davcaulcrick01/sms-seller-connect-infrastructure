@@ -326,10 +326,10 @@ jobs:
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         
         # Domain Configuration
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
@@ -499,10 +499,10 @@ jobs:
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         
         # Domain Configuration
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
@@ -822,10 +822,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -950,10 +950,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1559,10 +1559,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1687,10 +1687,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1774,10 +1774,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -2034,14 +2034,14 @@ jobs:
               if [ -n "${{ vars.BACKEND_IMAGE }}" ]; then
                 echo "✅ $var - ${{ vars.BACKEND_IMAGE }}"
               else
-                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}"
               fi
               ;;
             "FRONTEND_IMAGE")
               if [ -n "${{ vars.FRONTEND_IMAGE }}" ]; then
                 echo "✅ $var - ${{ vars.FRONTEND_IMAGE }}"
               else
-                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}"
               fi
               ;;
             "SMS_FRONTEND_DOMAIN")
@@ -2162,8 +2162,8 @@ jobs:
         export ENVIRONMENT="${{ env.ENVIRONMENT }}"
         
         # Docker Images
-        export BACKEND_IMAGE="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
-        export FRONTEND_IMAGE="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
+        export BACKEND_IMAGE="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}"
+        export FRONTEND_IMAGE="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}"
         
         # Domain Configuration
         export SMS_API_DOMAIN="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
