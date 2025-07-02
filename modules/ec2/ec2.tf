@@ -2,7 +2,7 @@
 # EC2 Instance for Multi-App Container Host
 ########################################
 
-# Use existing key pair for EC2 access
+# Use existing key pair for EC2 accesss
 data "aws_key_pair" "existing_key" {
   key_name = "car-rental-key"
 }

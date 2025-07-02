@@ -54,7 +54,8 @@ services:
   sms_backend:
     image: ${BACKEND_IMAGE}
     container_name: sms_backend
-    command: ["/bin/bash", "/app/backend/start.sh"]
+    # Use Docker-optimized start script (no frontend dependencies)
+    command: ["/bin/bash", "/app/start_backend_simple.sh"]
     environment:
       # Database Configuration
       - USE_POSTGRES=true
