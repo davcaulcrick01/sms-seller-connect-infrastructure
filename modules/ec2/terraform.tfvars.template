@@ -149,4 +149,31 @@ remember_me_days        = "30"
 
 # File Upload Configuration
 max_file_size_mb   = "10"
-allowed_file_types = "pdf,jpg,jpeg,png,doc,docx,csv" 
+allowed_file_types = "pdf,jpg,jpeg,png,doc,docx,csv"
+
+########################################
+# Frontend Environment Variables (VITE_)
+########################################
+
+# Frontend API Configuration
+vite_api_url      = "https://api.sms.typerelations.com"
+vite_backend_port = "8900"
+
+# Frontend App Configuration
+vite_app_name    = "SMS Seller Connect"
+vite_app_version = "1.0.0"
+
+# Frontend Feature Flags
+vite_feature_ai_suggestions        = "true"
+vite_feature_bulk_messaging        = "true"
+vite_feature_analytics_dashboard   = "true"
+vite_feature_advanced_flows        = "true"
+vite_feature_lead_scoring          = "true"
+
+# Frontend Development Settings
+vite_enable_analytics = "false"
+vite_log_level        = "info"
+
+# Frontend AI Configuration
+vite_openai_model           = "gpt-4"
+vite_enable_ai_suggestions  = "true" 

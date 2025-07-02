@@ -1,0 +1,21 @@
+EC2 Docker Logs Collection Summary
+==================================
+Collection Time: Mon Jun 30 20:00:06 CDT 2025
+SSH Target: ec2-user@98.81.70.146
+Remote Directory: /app/sms-seller-connect
+Local Output: ../ec2-debug-output
+
+Files Created:
+
+  -rw-r--r--@ 1 davidcaulcrick  staff    3766 Jun 30 19:59 ../ec2-debug-output/backend-logs.log
+  -rw-r--r--@ 1 davidcaulcrick  staff    1199 Jun 30 17:06 ../ec2-debug-output/bootstrap.log
+  -rw-r--r--@ 1 davidcaulcrick  staff  407395 Jun 30 17:07 ../ec2-debug-output/cloud-init-output.log
+  -rw-r--r--@ 1 davidcaulcrick  staff  291837 Jun 30 19:59 ../ec2-debug-output/complete-docker-logs-20250630_195846.log
+  -rw-r--r--@ 1 davidcaulcrick  staff     728 Jun 30 20:00 ../ec2-debug-output/docker-system-info.log
+  -rw-r--r--@ 1 davidcaulcrick  staff   24757 Jun 30 19:59 ../ec2-debug-output/frontend-logs.log
+  -rw-r--r--@ 1 davidcaulcrick  staff  174740 Jun 30 19:59 ../ec2-debug-output/health-check-logs.log
+  -rw-r--r--@ 1 davidcaulcrick  staff  113161 Jun 30 19:59 ../ec2-debug-output/nginx-logs.log
+  -rw-r--r--@ 1 davidcaulcrick  staff  329807 Jun 30 19:59 ../ec2-debug-output/recent-4h-logs.log
+  -rw-r--r--@ 1 davidcaulcrick  staff    1200 Jun 30 19:59 ../ec2-debug-output/services-status.log
+
+Collection Status: 8/8 commands successful

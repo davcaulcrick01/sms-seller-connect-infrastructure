@@ -198,6 +198,33 @@ add_variable "RATE_LIMIT_BURST" "rate_limit_burst"
 add_variable "SESSION_TIMEOUT_MINUTES" "session_timeout_minutes"
 add_variable "REMEMBER_ME_DAYS" "remember_me_days"
 
+# Frontend Environment Variables
+echo ""
+echo -e "${BLUE}📋 Adding Frontend Environment Variables...${NC}"
+
+# Frontend API Configuration
+add_variable "VITE_API_URL" "vite_api_url"
+add_variable "VITE_BACKEND_PORT" "vite_backend_port"
+
+# Frontend App Configuration
+add_variable "VITE_APP_NAME" "vite_app_name"
+add_variable "VITE_APP_VERSION" "vite_app_version"
+
+# Frontend Feature Flags
+add_variable "VITE_FEATURE_AI_SUGGESTIONS" "vite_feature_ai_suggestions"
+add_variable "VITE_FEATURE_BULK_MESSAGING" "vite_feature_bulk_messaging"
+add_variable "VITE_FEATURE_ANALYTICS_DASHBOARD" "vite_feature_analytics_dashboard"
+add_variable "VITE_FEATURE_ADVANCED_FLOWS" "vite_feature_advanced_flows"
+add_variable "VITE_FEATURE_LEAD_SCORING" "vite_feature_lead_scoring"
+
+# Frontend Development Settings
+add_variable "VITE_ENABLE_ANALYTICS" "vite_enable_analytics"
+add_variable "VITE_LOG_LEVEL" "vite_log_level"
+
+# Frontend AI Configuration
+add_variable "VITE_OPENAI_MODEL" "vite_openai_model"
+add_variable "VITE_ENABLE_AI_SUGGESTIONS" "vite_enable_ai_suggestions"
+
 # File Upload Configuration
 add_variable "MAX_FILE_SIZE_MB" "max_file_size_mb"
 add_variable "ALLOWED_FILE_TYPES" "allowed_file_types"
