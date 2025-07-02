@@ -1107,7 +1107,8 @@ jobs:
           
           # Wait for application to be ready
           echo "⏳ Waiting for application to be ready..."
-          sleep 180
+          echo "Allowing 4 minutes for backend services to fully initialize..."
+          sleep 240
           
           # Test API health endpoint
           if curl -f -m 30 "${API_URL}/api/health" > /dev/null 2>&1; then
@@ -2341,9 +2342,16 @@ jobs:
     - name: Wait for Infrastructure Stabilization
       run: |
         echo "⏳ Waiting for infrastructure to stabilize..."
-        echo "Allowing 3 minutes for all services to start up properly..."
-        sleep 180
-        echo "✅ Stabilization period complete"
+        echo "Allowing 6 minutes for all services to start up properly..."
+        echo "This includes time for:"
+        echo "  - EC2 instance boot and user data execution"
+        echo "  - Docker containers to pull and start"
+        echo "  - Database connections to establish"
+        echo "  - Backend API services to initialize"
+        echo "  - AI processing services to load"
+        echo "  - Health checks to become responsive"
+        sleep 360
+        echo "✅ Stabilization period complete (6 minutes)"
 
     - name: Get Infrastructure Details
       id: infra-details
@@ -2380,6 +2388,13 @@ jobs:
         echo "frontend_url=https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}" >> $GITHUB_OUTPUT
         echo "api_url=https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}" >> $GITHUB_OUTPUT
         echo "alb_url=http://$ALB_DNS" >> $GITHUB_OUTPUT
+
+    - name: Additional Wait for Service Readiness
+      run: |
+        echo "⏳ Additional wait for service readiness before comprehensive testing..."
+        echo "Allowing extra 2 minutes for services to reach stable state..."
+        sleep 120
+        echo "✅ Additional stabilization complete"
 
     - name: Test Backend API Endpoints & Features
       id: backend-health
