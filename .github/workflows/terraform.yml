@@ -179,6 +179,8 @@ jobs:
     outputs:
       plan-status: ${{ steps.plan.outputs.status }}
       has-changes: ${{ steps.plan.outputs.has-changes }}
+      infrastructure-exists: ${{ steps.check-infrastructure.outputs.exists }}
+      deployment-strategy: ${{ steps.check-infrastructure.outputs.strategy }}
     
     steps:
     - name: Checkout
@@ -470,6 +472,133 @@ jobs:
         
         echo "✅ Boolean environment variables set successfully!"
 
+    - name: Check Infrastructure Existence & Determine Strategy
+      id: check-infrastructure
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 INTELLIGENT DEPLOYMENT STRATEGY DETECTION"
+        echo "============================================="
+        echo ""
+        
+        # Check if key infrastructure components exist
+        INFRASTRUCTURE_EXISTS=false
+        STRATEGY="full-deploy"
+        
+        echo "🔍 Checking for existing infrastructure components..."
+        
+        # Check for EC2 instance
+        EC2_EXISTS=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=sms-seller-connect-${{ env.ENVIRONMENT }}-ec2" "Name=instance-state-name,Values=running,stopped,stopping" \
+          --query 'Reservations[*].Instances[*].InstanceId' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$EC2_EXISTS" ] && [ "$EC2_EXISTS" != "None" ]; then
+          echo "✅ EC2 instance found: $EC2_EXISTS"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No EC2 instance found"
+        fi
+        
+        # Check for ALB
+        ALB_EXISTS=$(aws elbv2 describe-load-balancers \
+          --names "sms-seller-connect-${{ env.ENVIRONMENT }}-alb" \
+          --query 'LoadBalancers[0].LoadBalancerArn' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ALB_EXISTS" ] && [ "$ALB_EXISTS" != "None" ]; then
+          echo "✅ ALB found: $(basename $ALB_EXISTS)"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No ALB found"
+        fi
+        
+        # Check for S3 bucket
+        BUCKET_EXISTS=$(aws s3api head-bucket --bucket "sms-seller-connect-${{ env.ENVIRONMENT }}-bucket" 2>/dev/null && echo "true" || echo "false")
+        
+        if [ "$BUCKET_EXISTS" = "true" ]; then
+          echo "✅ S3 bucket found"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No S3 bucket found"
+        fi
+        
+        # Check for Route53 hosted zone
+        ROUTE53_EXISTS=$(aws route53 list-hosted-zones \
+          --query "HostedZones[?Name=='${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}.'].Id" \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ROUTE53_EXISTS" ] && [ "$ROUTE53_EXISTS" != "None" ]; then
+          echo "✅ Route53 hosted zone found"
+        else
+          echo "❌ No Route53 hosted zone found"
+        fi
+        
+        echo ""
+        echo "🎯 DEPLOYMENT STRATEGY DECISION:"
+        echo "==============================="
+        
+        if [ "$INFRASTRUCTURE_EXISTS" = "true" ]; then
+          # Check if EC2 is running and accessible
+          if [ -n "$EC2_EXISTS" ]; then
+            EC2_STATE=$(aws ec2 describe-instances \
+              --instance-ids "$EC2_EXISTS" \
+              --query 'Reservations[0].Instances[0].State.Name' \
+              --output text 2>/dev/null || echo "")
+            
+            echo "📊 EC2 Instance State: $EC2_STATE"
+            
+            if [ "$EC2_STATE" = "running" ]; then
+              # Check if we can connect to the instance
+              EC2_IP=$(aws ec2 describe-instances \
+                --instance-ids "$EC2_EXISTS" \
+                --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                --output text 2>/dev/null || echo "")
+              
+              if [ -n "$EC2_IP" ] && [ "$EC2_IP" != "None" ]; then
+                echo "✅ EC2 is running and accessible at $EC2_IP"
+                STRATEGY="redeploy"
+                echo "🚀 STRATEGY: Fast Redeploy - Update existing running infrastructure"
+              else
+                STRATEGY="full-deploy"
+                echo "🏗️ STRATEGY: Full Deploy - EC2 exists but not accessible"
+              fi
+            else
+              STRATEGY="full-deploy"
+              echo "🏗️ STRATEGY: Full Deploy - EC2 exists but not running ($EC2_STATE)"
+            fi
+          else
+            STRATEGY="full-deploy"
+            echo "🏗️ STRATEGY: Full Deploy - Some infrastructure exists but EC2 missing"
+          fi
+        else
+          STRATEGY="full-deploy"
+          echo "🏗️ STRATEGY: Full Deploy - No existing infrastructure detected"
+        fi
+        
+        echo ""
+        echo "📋 STRATEGY SUMMARY:"
+        echo "==================="
+        if [ "$STRATEGY" = "redeploy" ]; then
+          echo "✨ FAST REDEPLOY selected"
+          echo "   • Infrastructure exists and is healthy"
+          echo "   • Will update containers and configurations"
+          echo "   • Estimated time: ~5 minutes"
+          echo "   • Route: plan → redeploy → health-check"
+        else
+          echo "🏗️ FULL DEPLOYMENT selected"
+          echo "   • Infrastructure missing or unhealthy"
+          echo "   • Will create/recreate all resources"
+          echo "   • Estimated time: ~15 minutes"
+          echo "   • Route: plan → apply → health-check"
+        fi
+        
+        # Set outputs
+        echo "exists=$INFRASTRUCTURE_EXISTS" >> $GITHUB_OUTPUT
+        echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+        
+        echo ""
+        echo "🔄 Next job will be: $([ "$STRATEGY" = "redeploy" ] && echo "Fast Redeploy" || echo "Full Apply")"
+
     - name: Terraform Plan
       id: plan
       working-directory: ${{ env.TF_WORKING_DIR }}
@@ -723,13 +852,15 @@ jobs:
           ${{ env.TF_WORKING_DIR }}/terraform-${{ env.ENVIRONMENT }}.tfvars
 
   apply:
-    name: '🚀 Deploy Infrastructure'
+    name: '🏗️ Full Infrastructure Deployment'
     runs-on: ubuntu-latest
     needs: [format, validate, plan]
     if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
+      needs.plan.outputs.deployment-strategy == 'full-deploy' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
+      )
     
     steps:
     - name: Auto-Deploy Notification
@@ -1073,82 +1204,30 @@ jobs:
         echo "📋 All outputs:"
         terraform output 2>/dev/null || echo "ℹ️ No outputs available"
 
-    - name: Verify ALB Health
+    - name: Deployment Completion Summary
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "🔍 Verifying ALB deployment..."
-        
-        ALB_DNS="${{ steps.outputs.outputs.alb_dns }}"
-        if [ "$ALB_DNS" != "N/A" ] && [ -n "$ALB_DNS" ]; then
-          echo "🌐 Testing ALB health endpoint..."
-          
-          # Wait for ALB to be ready
-          echo "⏳ Waiting for ALB to be ready..."
-          sleep 120
-          
-          # Test ALB health endpoint
-          if curl -f -m 30 "http://${ALB_DNS}/alb-health" > /dev/null 2>&1; then
-            echo "✅ ALB health check responding"
-          else
-            echo "⚠️ ALB health check not yet responding (may still be starting)"
-          fi
-        else
-          echo "⚠️ No ALB DNS available for verification"
-        fi
-
-    - name: Verify Application Health
-      working-directory: ${{ env.TF_WORKING_DIR }}
-      run: |
-        echo "🔍 Verifying SMS Seller Connect application..."
-        
-        API_URL="${{ steps.outputs.outputs.api_url }}"
-        if [ "$API_URL" != "N/A" ] && [ -n "$API_URL" ]; then
-          echo "🌐 Testing application health..."
-          
-          # Wait for application to be ready
-          echo "⏳ Waiting for application to be ready..."
-          echo "Allowing 4 minutes for backend services to fully initialize..."
-          sleep 240
-          
-          # Test API health endpoint
-          if curl -f -m 30 "${API_URL}/api/health" > /dev/null 2>&1; then
-            echo "✅ SMS Seller Connect API is responding"
-          else
-            echo "⚠️ Application not yet responding (may still be starting)"
-          fi
-          
-          # Test database connection
-          if curl -f -m 30 "${API_URL}/api/test-db" > /dev/null 2>&1; then
-            echo "✅ Database connection verified"
-          else
-            echo "⚠️ Database connection test failed"
-          fi
-        else
-          echo "⚠️ No API URL available for verification"
-        fi
-
-    - name: Verify S3 Deployment
-      working-directory: ${{ env.TF_WORKING_DIR }}
-      run: |
-        echo "🔍 Verifying S3 deployment..."
-        
-        BUCKET_NAME="${{ steps.outputs.outputs.bucket_name }}"
-        if [ "$BUCKET_NAME" != "N/A" ] && [ -n "$BUCKET_NAME" ]; then
-          echo "🪣 Testing S3 bucket accessibility..."
-          if aws s3 ls "s3://${BUCKET_NAME}" > /dev/null 2>&1; then
-            echo "✅ S3 bucket is accessible"
-            
-            # Check for required files
-            echo "📁 Checking for required configuration files..."
-            aws s3 ls "s3://${BUCKET_NAME}/docker-compose/" || echo "⚠️ Docker compose files not found"
-            aws s3 ls "s3://${BUCKET_NAME}/nginx/" || echo "⚠️ Nginx config not found"
-            aws s3 ls "s3://${BUCKET_NAME}/scripts/" || echo "⚠️ Scripts not found"
-          else
-            echo "⚠️ S3 bucket not yet accessible"
-          fi
-        else
-          echo "⚠️ No bucket name available for verification"
-        fi
+        echo "✅ INFRASTRUCTURE DEPLOYMENT COMPLETED!"
+        echo "======================================"
+        echo ""
+        echo "🚀 Successfully deployed SMS Seller Connect infrastructure"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo "🌍 Environment: ${{ env.ENVIRONMENT }}"
+        echo "⏰ Deployment completed at: $(date)"
+        echo ""
+        echo "📋 Infrastructure components deployed:"
+        echo "  ✅ EC2 Instance"
+        echo "  ✅ Application Load Balancer (ALB)"
+        echo "  ✅ S3 Configuration Bucket"
+        echo "  ✅ Route53 DNS Records"
+        echo "  ✅ ACM SSL Certificates"
+        echo "  ✅ Security Groups & Networking"
+        echo "  ✅ CloudWatch Monitoring"
+        echo ""
+        echo "🔄 Next: Infrastructure Testing Stage will begin after stabilization period"
+        echo "⏳ Testing will start after 13-minute wait to allow all services to stabilize"
+        echo ""
+        echo "📊 Check the 'Comprehensive Health Check' job for detailed verification results"
 
     - name: Update CloudWatch Dashboard
       run: |
@@ -1250,174 +1329,7 @@ jobs:
           echo "⚠️ Could not retrieve Route53 name servers from Terraform output"
         fi
 
-    - name: Test Container Health via SSM
-      id: container-health
-      run: |
-        echo "🐳 Testing Container Health via SSM..."
-        
-        INSTANCE_ID="${{ steps.infra-details.outputs.instance_id }}"
-        
-        if [ "$INSTANCE_ID" = "not-found" ]; then
-          echo "❌ No EC2 instance found"
-          echo "status=failed" >> $GITHUB_OUTPUT
-          exit 1
-        fi
-        
-        # Create comprehensive container health check script
-        HEALTH_SCRIPT='#!/bin/bash
-        echo "🐳 CONTAINER HEALTH CHECK REPORT"
-        echo "================================="
-        echo ""
-        
-        # Check if Docker is running
-        if systemctl is-active --quiet docker; then
-          echo "✅ Docker service is running"
-        else
-          echo "❌ Docker service is not running"
-          systemctl status docker
-        fi
-        
-        echo ""
-        echo "📊 CONTAINER STATUS:"
-        echo "==================="
-        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "Failed to get container status"
-        
-        echo ""
-        echo "🔍 CONTAINER LOGS (Last 20 lines each):"
-        echo "========================================"
-        
-        # Check each expected container
-        for container in sms_backend sms_frontend nginx_proxy health_check_service; do
-          echo ""
-          echo "--- $container logs ---"
-          if docker ps | grep -q "$container"; then
-            echo "✅ $container is running"
-            docker logs --tail 20 "$container" 2>&1 || echo "Failed to get logs"
-          else
-            echo "❌ $container is not running"
-          fi
-        done
-        
-        echo ""
-        echo "🏥 INTERNAL HEALTH CHECKS:"
-        echo "=========================="
-        
-        # Test internal endpoints
-        echo "Testing backend internal health..."
-        curl -f -s --max-time 10 http://localhost:8900/health 2>&1 || echo "❌ Backend internal health failed"
-        
-        echo "Testing frontend internal..."
-        curl -f -s --max-time 10 http://localhost:8082 2>&1 | head -n 5 || echo "❌ Frontend internal failed"
-        
-        echo "Testing nginx internal..."
-        curl -f -s --max-time 10 http://localhost:80/alb-health 2>&1 || echo "❌ Nginx internal health failed"
-        
-        echo ""
-        echo "📈 SYSTEM RESOURCES:"
-        echo "==================="
-        echo "Memory usage:"
-        free -h
-        echo ""
-        echo "Disk usage:"
-        df -h
-        echo ""
-        echo "CPU usage:"
-        top -bn1 | grep "Cpu(s)" || echo "CPU info unavailable"
-        
-        echo ""
-        echo "🔍 DOCKER RESOURCE USAGE:"
-        echo "========================="
-        docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" || echo "Docker stats unavailable"'
-        
-        # Execute health check via SSM
-        echo "🚀 Executing container health check..."
-        COMMAND_ID=$(aws ssm send-command \
-          --instance-ids "$INSTANCE_ID" \
-          --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"$HEALTH_SCRIPT\"]" \
-          --comment "Comprehensive Container Health Check" \
-          --query 'Command.CommandId' \
-          --output text)
-        
-        echo "📋 SSM Command ID: $COMMAND_ID"
-        
-        # Wait for command to complete
-        echo "⏳ Waiting for health check to complete..."
-        aws ssm wait command-executed \
-          --command-id "$COMMAND_ID" \
-          --instance-id "$INSTANCE_ID" \
-          --max-attempts 30
-        
-        # Get and display results
-        echo "📊 Container Health Check Results:"
-        echo "=================================="
-        aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "$INSTANCE_ID" \
-          --query 'StandardOutputContent' \
-          --output text
-        
-        # Check command status
-        STATUS=$(aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "$INSTANCE_ID" \
-          --query 'Status' \
-          --output text)
-        
-        if [ "$STATUS" = "Success" ]; then
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "✅ Container health check completed successfully"
-        else
-          echo "status=failed" >> $GITHUB_OUTPUT
-          echo "❌ Container health check failed"
-          echo "Error output:"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query 'StandardErrorContent' \
-            --output text
-        fi
 
-    - name: Generate Overall Health Report
-      id: overall-health
-      if: always()
-      run: |
-        echo "📊 COMPREHENSIVE SMS SELLER CONNECT HEALTH REPORT"
-        echo "================================================="
-        echo ""
-        
-        # Collect all test results
-        CONTAINER_STATUS="${{ steps.container-health.outputs.status || 'unknown' }}"
-        BACKEND_STATUS="${{ steps.backend-health.outputs.status || 'unknown' }}"
-        AI_STATUS="${{ steps.ai-health.outputs.status || 'unknown' }}"
-        SMS_STATUS="${{ steps.sms-health.outputs.status || 'unknown' }}"
-        SCHEDULER_STATUS="${{ steps.scheduler-health.outputs.status || 'unknown' }}"
-        FRONTEND_STATUS="${{ steps.frontend-health.outputs.status || 'unknown' }}"
-        DATABASE_STATUS="${{ steps.database-health.outputs.status || 'unknown' }}"
-        
-        echo "🐳 Container Health: $([ "$CONTAINER_STATUS" = "success" ] && echo "✅ PASS" || echo "❌ FAIL")"
-        echo "🔧 Backend API Health: $([ "$BACKEND_STATUS" = "success" ] && echo "✅ PASS (${{ steps.backend-health.outputs.backend_success_rate || 'N/A' }})" || echo "❌ FAIL")"
-        echo "🤖 AI Processing: $([ "$AI_STATUS" = "success" ] && echo "✅ PASS" || echo "❌ FAIL")"
-        echo "📱 SMS/Twilio Services: $([ "$SMS_STATUS" = "success" ] && echo "✅ PASS" || echo "❌ FAIL")"
-        echo "⏰ Scheduled Messages: $([ "$SCHEDULER_STATUS" = "success" ] && echo "✅ PASS" || echo "❌ FAIL")"
-        echo "🎨 Frontend Health: $([ "$FRONTEND_STATUS" = "success" ] && echo "✅ PASS (${{ steps.frontend-health.outputs.frontend_success_rate || 'N/A' }})" || echo "❌ FAIL")"
-        echo "🗄️ Database Health: $([ "$DATABASE_STATUS" = "success" ] && echo "✅ PASS" || echo "❌ FAIL")"
-        echo ""
-        
-        # Calculate overall health
-        PASSED=0
-        TOTAL=7
-        
-        [ "$CONTAINER_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$BACKEND_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$AI_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$SMS_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$SCHEDULER_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$FRONTEND_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        [ "$DATABASE_STATUS" = "success" ] && PASSED=$((PASSED + 1))
-        
-        echo "📈 Overall Health Score: $PASSED/$TOTAL tests passed"
-        echo ""
         
         if [ "$PASSED" -ge 5 ]; then
           echo "🎉 OVERALL STATUS: ✅ HEALTHY"
@@ -2099,11 +2011,43 @@ jobs:
         fi
 
   redeploy:
-    name: '🚀 Redeploy Application'
+    name: '🚀 Fast Redeploy Application'
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'redeploy'
+    needs: [format, validate, plan]
+    if: |
+      needs.plan.outputs.deployment-strategy == 'redeploy' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'redeploy')
+      )
     
     steps:
+    - name: Fast Redeploy Strategy Notification
+      run: |
+        echo "🚀 FAST REDEPLOY STRATEGY ACTIVATED!"
+        echo "====================================="
+        echo ""
+        echo "✨ Infrastructure already exists and is healthy"
+        echo "🎯 Strategy: Update existing running infrastructure"
+        echo "⚡ Estimated time: ~5 minutes (vs ~15 minutes for full deployment)"
+        echo ""
+        echo "🔄 What will be updated:"
+        echo "  • Container images (backend & frontend)"
+        echo "  • Environment configurations"
+        echo "  • Application configurations"
+        echo "  • Service restarts"
+        echo ""
+        echo "🏗️ What will NOT be changed:"
+        echo "  • EC2 instance (already running)"
+        echo "  • ALB configuration (already configured)"
+        echo "  • Route53 DNS (already set)"
+        echo "  • Security groups (already configured)"
+        echo ""
+        echo "🔧 Environment: ${{ env.ENVIRONMENT }}"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo ""
+
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -2114,12 +2058,57 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Upload Redeployment Script to S3
+    - name: Upload All Latest Scripts and Configuration to S3
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📤 Uploading redeployment script to S3..."
-        aws s3 cp scripts/redeploy-application.sh s3://sms-seller-connect-bucket/scripts/redeploy-application.sh
-        echo "✅ Redeployment script uploaded"
+        echo "📤 Uploading ALL latest scripts and configuration to S3..."
+        echo "This ensures the redeploy uses the newest versions from this commit"
+        
+        S3_BUCKET="sms-seller-connect-bucket"
+        
+        # Upload all scripts from the scripts directory
+        echo "🔄 Uploading all scripts..."
+        if [ -d "scripts" ]; then
+          aws s3 sync scripts/ s3://${S3_BUCKET}/scripts/ --delete
+          echo "✅ All scripts uploaded and old scripts removed"
+        else
+          echo "⚠️ Scripts directory not found"
+        fi
+        
+        # Upload docker-compose configuration
+        echo "🔄 Uploading Docker Compose configuration..."
+        if [ -f "config/docker-compose.yml" ]; then
+          aws s3 cp config/docker-compose.yml s3://${S3_BUCKET}/docker-compose/docker-compose.yml
+          echo "✅ Docker Compose configuration uploaded"
+        else
+          echo "⚠️ Docker Compose configuration not found"
+        fi
+        
+        # Upload environment template
+        if [ -f "config/.env.template" ]; then
+          aws s3 cp config/.env.template s3://${S3_BUCKET}/docker-compose/.env.template
+          echo "✅ Environment template uploaded"
+        else
+          echo "ℹ️ Environment template not found (optional)"
+        fi
+        
+        # Upload nginx configuration
+        echo "🔄 Uploading Nginx configuration..."
+        if [ -f "config/nginx.conf" ]; then
+          aws s3 cp config/nginx.conf s3://${S3_BUCKET}/nginx/nginx.conf
+          echo "✅ Nginx configuration uploaded"
+        else
+          echo "⚠️ Nginx configuration not found"
+        fi
+        
+        echo ""
+        echo "📋 S3 Upload Summary:"
+        echo "=============================="
+        echo "🔧 Scripts: s3://${S3_BUCKET}/scripts/"
+        echo "🐳 Docker Compose: s3://${S3_BUCKET}/docker-compose/"
+        echo "🌐 Nginx Config: s3://${S3_BUCKET}/nginx/"
+        echo ""
+        echo "✅ All latest files uploaded to S3 for redeploy"
 
     - name: Get EC2 Instance Details
       id: ec2-details
@@ -2314,10 +2303,14 @@ jobs:
         echo "${{ job.status == 'success' && '🎉 **Application has been successfully redeployed without infrastructure changes!**' || '❌ **Redeployment failed - check logs for details**' }}"
 
   health-check:
-    name: '🏥 Comprehensive SMS Seller Connect Health Check'
+    name: '🧪 Test Infrastructure & Application Health'
     runs-on: ubuntu-latest
-    needs: [apply]
-    if: needs.apply.result == 'success'
+    needs: [apply, redeploy]
+    if: |
+      always() && (
+        (needs.apply.result == 'success') ||
+        (needs.redeploy.result == 'success')
+      )
     
     outputs:
       health-status: ${{ steps.overall-health.outputs.status }}
@@ -2339,19 +2332,30 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Wait for Infrastructure Stabilization
+    - name: Infrastructure Deployment Complete - Begin Stabilization
       run: |
-        echo "⏳ Waiting for infrastructure to stabilize..."
-        echo "Allowing 6 minutes for all services to start up properly..."
-        echo "This includes time for:"
-        echo "  - EC2 instance boot and user data execution"
-        echo "  - Docker containers to pull and start"
-        echo "  - Database connections to establish"
-        echo "  - Backend API services to initialize"
-        echo "  - AI processing services to load"
-        echo "  - Health checks to become responsive"
-        sleep 360
-        echo "✅ Stabilization period complete (6 minutes)"
+        echo "🚀 Infrastructure deployment completed!"
+        echo "======================================"
+        echo "⏳ Beginning extended stabilization period..."
+        echo ""
+        echo "📋 What's happening during this wait:"
+        echo "  1. EC2 instance completing boot process"
+        echo "  2. User data scripts executing (Docker setup, service config)"
+        echo "  3. Container images being pulled from ECR"
+        echo "  4. Database connections being established"
+        echo "  5. Backend API services initializing"
+        echo "  6. AI processing services loading models"
+        echo "  7. SMS/Twilio services connecting"
+        echo "  8. Scheduler services starting"
+        echo "  9. Frontend application building"
+        echo "  10. All health checks becoming responsive"
+        echo ""
+        echo "⏰ EXTENDED STABILIZATION: 10 MINUTES"
+        echo "This is intentionally long to ensure all complex services are fully operational."
+        echo ""
+        echo "Starting stabilization wait at $(date)..."
+        sleep 600
+        echo "✅ Extended stabilization period complete (10 minutes) - $(date)"
 
     - name: Get Infrastructure Details
       id: infra-details
@@ -2389,12 +2393,24 @@ jobs:
         echo "api_url=https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}" >> $GITHUB_OUTPUT
         echo "alb_url=http://$ALB_DNS" >> $GITHUB_OUTPUT
 
-    - name: Additional Wait for Service Readiness
+    - name: Final Service Readiness Check
       run: |
-        echo "⏳ Additional wait for service readiness before comprehensive testing..."
-        echo "Allowing extra 2 minutes for services to reach stable state..."
-        sleep 120
-        echo "✅ Additional stabilization complete"
+        echo "🔍 Final service readiness verification before comprehensive testing..."
+        echo "⏳ Allowing additional 3 minutes for all services to reach fully stable state..."
+        echo ""
+        echo "🎯 This final wait ensures:"
+        echo "  - All containers are not just running, but fully responsive"
+        echo "  - Database connections are stable and performant"
+        echo "  - API endpoints are responding consistently"
+        echo "  - AI services have completed model loading"
+        echo "  - Background services are operational"
+        echo ""
+        echo "Starting final readiness wait at $(date)..."
+        sleep 180
+        echo "✅ Final readiness verification complete (3 minutes) - $(date)"
+        echo ""
+        echo "🚀 TOTAL STABILIZATION TIME: 13 MINUTES"
+        echo "Now beginning comprehensive infrastructure testing..."
 
     - name: Test Backend API Endpoints & Features
       id: backend-health

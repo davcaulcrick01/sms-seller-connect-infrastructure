@@ -253,14 +253,23 @@ start_services() {
     log_to_cloudwatch "INFO" "DEBUG: SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}"
     
     # Set fallback values if variables are empty
+    # Note: These should normally be set by Terraform with commit-specific tags
     if [ -z "${BACKEND_IMAGE}" ]; then
-        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
-        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using fallback: ${BACKEND_IMAGE}"
+        # Try to get the latest tag from ECR instead of using :latest
+        LATEST_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-backend \
+          --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+          --output text 2>/dev/null || echo "latest")
+        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${LATEST_TAG}"
+        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using latest available tag: ${BACKEND_IMAGE}"
     fi
     
     if [ -z "${FRONTEND_IMAGE}" ]; then
-        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
-        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using fallback: ${FRONTEND_IMAGE}"
+        # Try to get the latest tag from ECR instead of using :latest
+        LATEST_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-frontend \
+          --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+          --output text 2>/dev/null || echo "latest")
+        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${LATEST_TAG}"
+        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using latest available tag: ${FRONTEND_IMAGE}"
     fi
     
     # Create .env file for Docker Compose with all variables
@@ -417,5 +426,5 @@ main() {
     echo "Setup completed successfully at $(date)" >> "$LOCK_FILE"
 }
 
-# Run main function
+# Run main functions
 main

@@ -15,8 +15,16 @@ export CLOUDWATCH_LOG_GROUP="/aws/ec2/sms-seller-connect"
 export CLOUDWATCH_LOG_STREAM="application"
 
 # Docker Images (using the fallback values from GitHub Actions)
-export BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
-export FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+# Get the latest image tags from ECR instead of hardcoding :latest
+LATEST_BACKEND_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-backend \
+  --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+  --output text 2>/dev/null || echo "latest")
+LATEST_FRONTEND_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-frontend \
+  --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+  --output text 2>/dev/null || echo "latest")
+
+export BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${LATEST_BACKEND_TAG}"
+export FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${LATEST_FRONTEND_TAG}"
 
 # Domain Configuration
 export SMS_API_DOMAIN="api.sms.typerelations.com"

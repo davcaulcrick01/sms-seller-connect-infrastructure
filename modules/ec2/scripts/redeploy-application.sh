@@ -87,35 +87,97 @@ backup_current_config() {
 
 # Function to download fresh configuration from S3
 download_fresh_config() {
-    log_message "INFO" "Downloading fresh configuration from S3..."
+    log_message "INFO" "Downloading fresh configuration and scripts from S3..."
     
     # Create application directory if it doesn't exist
     sudo mkdir -p "$APP_DIR"
     cd "$APP_DIR"
     
-    # Download all configuration files
+    # Remove existing scripts to ensure clean replacement
+    log_message "INFO" "Removing existing scripts for clean replacement..."
+    sudo rm -f *.sh *.py docker-compose.yml nginx.conf .env.template || true
+    
+    # Download Docker Compose configuration
     log_message "INFO" "Downloading Docker Compose configuration..."
-    sudo aws s3 cp "s3://${S3_BUCKET}/docker-compose/docker-compose.yml" ./docker-compose.yml
+    sudo aws s3 cp "s3://${S3_BUCKET}/docker-compose/docker-compose.yml" ./docker-compose.yml || {
+        log_message "ERROR" "Failed to download docker-compose.yml"
+        return 1
+    }
     
+    # Download environment template
     log_message "INFO" "Downloading environment template..."
-    sudo aws s3 cp "s3://${S3_BUCKET}/docker-compose/.env.template" ./.env.template
+    sudo aws s3 cp "s3://${S3_BUCKET}/docker-compose/.env.template" ./.env.template || {
+        log_message "WARN" "Failed to download .env.template, continuing..."
+    }
     
+    # Download Nginx configuration
     log_message "INFO" "Downloading Nginx configuration..."
-    sudo aws s3 cp "s3://${S3_BUCKET}/nginx/nginx.conf" ./nginx.conf
+    sudo aws s3 cp "s3://${S3_BUCKET}/nginx/nginx.conf" ./nginx.conf || {
+        log_message "ERROR" "Failed to download nginx.conf"
+        return 1
+    }
     
-    log_message "INFO" "Downloading health check scripts..."
-    sudo aws s3 cp "s3://${S3_BUCKET}/scripts/health-check.sh" ./health-check.sh
-    sudo aws s3 cp "s3://${S3_BUCKET}/scripts/health-check-server.py" ./health-check-server.py
+    # Download ALL scripts from S3 scripts folder (replace any existing)
+    log_message "INFO" "Downloading ALL scripts from S3 (replacing existing)..."
     
-    log_message "INFO" "Downloading maintenance script..."
-    sudo aws s3 cp "s3://${S3_BUCKET}/scripts/maintenance.sh" ./maintenance.sh
+    # List all scripts in S3 and download them
+    SCRIPT_LIST=$(aws s3 ls "s3://${S3_BUCKET}/scripts/" --recursive | awk '{print $4}' | grep -E '\.(sh|py)$' || true)
     
-    # Set proper permissions
+    if [ -n "$SCRIPT_LIST" ]; then
+        while IFS= read -r script_path; do
+            if [ -n "$script_path" ]; then
+                script_name=$(basename "$script_path")
+                log_message "INFO" "Downloading script: $script_name"
+                sudo aws s3 cp "s3://${S3_BUCKET}/$script_path" "./$script_name" || {
+                    log_message "WARN" "Failed to download $script_name, continuing..."
+                }
+            fi
+        done <<< "$SCRIPT_LIST"
+    else
+        log_message "WARN" "No scripts found in S3 bucket scripts folder"
+    fi
+    
+    # Download specific critical scripts with error handling
+    CRITICAL_SCRIPTS=(
+        "health-check.sh"
+        "health-check-server.py"
+        "maintenance.sh"
+        "redeploy-application.sh"
+        "user_data.sh"
+        "bootstrap.sh"
+    )
+    
+    for script in "${CRITICAL_SCRIPTS[@]}"; do
+        if [ ! -f "$script" ]; then
+            log_message "INFO" "Downloading critical script: $script"
+            sudo aws s3 cp "s3://${S3_BUCKET}/scripts/$script" "./$script" || {
+                log_message "WARN" "Critical script $script not found in S3, continuing..."
+            }
+        fi
+    done
+    
+    # Set proper permissions for all files
+    log_message "INFO" "Setting proper permissions for all downloaded files..."
     sudo chown -R ec2-user:ec2-user "$APP_DIR"
-    sudo chmod 644 docker-compose.yml nginx.conf .env.template health-check-server.py
-    sudo chmod 755 health-check.sh maintenance.sh
     
-    log_message "INFO" "✅ Fresh configuration downloaded from S3"
+    # Set permissions for configuration files
+    sudo chmod 644 docker-compose.yml nginx.conf .env.template *.py 2>/dev/null || true
+    
+    # Set executable permissions for shell scripts
+    sudo chmod 755 *.sh 2>/dev/null || true
+    
+    # Create symlinks for commonly used scripts
+    log_message "INFO" "Creating convenient symlinks for scripts..."
+    sudo ln -sf "$APP_DIR/maintenance.sh" /usr/local/bin/sms-maintenance 2>/dev/null || true
+    sudo ln -sf "$APP_DIR/health-check.sh" /usr/local/bin/sms-health 2>/dev/null || true
+    
+    # Log what was downloaded
+    log_message "INFO" "Downloaded files summary:"
+    ls -la "$APP_DIR" | grep -E '\.(sh|py|yml|conf)$' | while read -r line; do
+        log_message "INFO" "  $line"
+    done
+    
+    log_message "INFO" "✅ Fresh configuration and scripts downloaded and replaced from S3"
 }
 
 # Function to create environment file with all variables
