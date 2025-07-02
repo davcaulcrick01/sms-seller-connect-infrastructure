@@ -10,7 +10,7 @@ variable "ami_id" {
   type        = string
 }
 
-# EC2 Instance Type
+# EC2 Instance Type #
 variable "instance_type" {
   description = "Instance type for the EC2 instance"
   type        = string
@@ -20,6 +20,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "Key name for the EC2 instance"
   type        = string
+  default     = "car-rental-key"
 }
 
 # EC2 Instance Name
@@ -62,6 +63,7 @@ variable "project_name" {
 variable "tags" {
   description = "Tags to apply to all resources"
   type        = map(string)
+  default     = {}
 }
 
 # S3 Bucket Configuration
@@ -78,12 +80,14 @@ variable "s3_acl" {
 variable "s3_force_destroy" {
   description = "Force destroy the S3 bucket (true for non-empty buckets)"
   type        = bool
+  default     = false
 }
 
 # Common Tags
 variable "common_tags" {
   description = "Common tags to be applied to all resources"
   type        = map(string)
+  default     = {}
 }
 
 variable "ecr_repo_url" {
@@ -270,11 +274,6 @@ variable "bucket_acl" {
   type        = string
 }
 
-variable "s3_force_destroy" {
-  description = "Force destroy the S3 bucket (true for non-empty buckets)"
-  type        = bool
-}
-
 ########################################
 # EC2 Module Variables
 ########################################
@@ -282,6 +281,7 @@ variable "s3_force_destroy" {
 variable "use_default_vpc" {
   description = "Whether to use the default VPC"
   type        = bool
+  default     = true
 }
 
 variable "admin_ssh_cidr" {
@@ -321,6 +321,7 @@ variable "sms_api_domain" {
 variable "enable_carrental_domain" {
   description = "Whether to create car rental domain records"
   type        = bool
+  default     = false
 }
 
 variable "carrental_frontend_domain" {
@@ -346,6 +347,7 @@ variable "flask_secret_key" {
 variable "use_postgres" {
   description = "Whether to use PostgreSQL"
   type        = bool
+  default     = true
 }
 
 variable "database_url" {
@@ -419,12 +421,14 @@ variable "ngrok_subdomain" {
 variable "start_ngrok" {
   description = "Whether to start ngrok"
   type        = bool
+  default     = true
 }
 
 # Application Settings
 variable "debug" {
   description = "Debug mode"
   type        = bool
+  default     = true
 }
 
 variable "log_level" {
@@ -485,6 +489,4 @@ variable "allowed_file_types" {
 # Local Variables
 ########################################
 
-locals {
-  name_prefix = "${var.project_name}-${var.environment}"
-}
+# Note: Locals are defined in locals.tf

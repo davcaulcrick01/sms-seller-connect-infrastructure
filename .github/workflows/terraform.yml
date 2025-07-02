@@ -21,6 +21,8 @@ on:
           - apply
           - destroy
           - format
+          - redeploy
+          - verify-secrets
       environment:
         description: 'Environment to deploy to'
         required: true
@@ -226,186 +228,423 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
-    - name: Create GitHub-Based Terraform Variables
+    - name: Check and Handle State Lock
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📝 Creating terraform.tfvars from GitHub secrets and variables..."
+        echo "🔍 Checking for existing state locks..."
         
-        # Create terraform.tfvars from GitHub secrets and variables
-        cat > terraform-github.tfvars << 'EOF'
-        ########################################
-        # SMS Seller Connect Configuration from GitHub
-        ########################################
+        # Function to check if lock is stale (older than 15 minutes)
+        check_stale_lock() {
+          local lock_time=$1
+          local current_time=$(date -u +%s)
+          local lock_timestamp=$(date -d "$lock_time" +%s 2>/dev/null || echo "0")
+          local age=$((current_time - lock_timestamp))
+          
+          # If lock is older than 15 minutes (900 seconds), consider it stale
+          if [ $age -gt 900 ]; then
+            return 0  # stale
+          else
+            return 1  # not stale
+          fi
+        }
         
+        # Try to get state info to check for locks
+        set +e
+        terraform refresh -input=false > /dev/null 2>&1
+        refresh_exit_code=$?
+        set -e
+        
+        if [ $refresh_exit_code -eq 1 ]; then
+          echo "🔒 State lock detected, checking if it's stale..."
+          
+          # Try to get lock info
+          lock_output=$(terraform plan -input=false 2>&1 || true)
+          
+          if echo "$lock_output" | grep -q "Lock Info:"; then
+            lock_id=$(echo "$lock_output" | grep "ID:" | awk '{print $2}')
+            lock_time=$(echo "$lock_output" | grep "Created:" | sed 's/.*Created: *\(.*\) UTC.*/\1/')
+            lock_who=$(echo "$lock_output" | grep "Who:" | awk '{print $2}')
+            
+            echo "🔍 Lock details:"
+            echo "  ID: $lock_id"
+            echo "  Created: $lock_time"
+            echo "  Who: $lock_who"
+            
+            if check_stale_lock "$lock_time"; then
+              echo "⚠️ Lock is stale (older than 15 minutes), force unlocking..."
+              terraform force-unlock -force "$lock_id"
+              echo "✅ Stale lock removed successfully"
+            else
+              echo "❌ Lock is recent, operation is likely in progress"
+              echo "🕐 Waiting 60 seconds for operation to complete..."
+              sleep 60
+              
+              # Check again after waiting
+              set +e
+              terraform refresh -input=false > /dev/null 2>&1
+              second_check=$?
+              set -e
+              
+              if [ $second_check -eq 1 ]; then
+                echo "🔒 Lock still exists after waiting, force unlocking..."
+                terraform force-unlock -force "$lock_id" || true
+                echo "✅ Lock forcefully removed"
+              else
+                echo "✅ Lock cleared automatically"
+              fi
+            fi
+          fi
+        else
+          echo "✅ No state lock detected"
+        fi
+
+    - name: Set Terraform Environment Variables
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
         # Basic Configuration
-        region       = "${{ vars.AWS_REGION || 'us-east-1' }}"
-        environment  = "${{ env.ENVIRONMENT }}"
-        project_name = "${{ vars.PROJECT_NAME || 'sms-seller-connect' }}"
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
         
         # EC2 Configuration
-        ami_id        = "${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}"
-        instance_type = "${{ vars.INSTANCE_TYPE || 't2.micro' }}"
-        key_name      = "${{ vars.KEY_NAME || 'sms-seller-connect-key' }}"
-        instance_name = "${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}"
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
         
         # Networking Configuration
-        use_default_vpc = ${{ vars.USE_DEFAULT_VPC || 'false' }}
-        vpc_name        = "${{ vars.VPC_NAME || 'Grey-VPC' }}"
-        subnet_name     = "${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}"
-        subnet_name_b   = "${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}"
-        subnet_id       = "${{ vars.SUBNET_ID || '' }}"
-        admin_ssh_cidr  = "${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}"
-        
-        # SSH Configuration
-        ssh_public_key = "${{ secrets.SSH_PUBLIC_KEY }}"
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
         
         # S3 Configuration
-        bucket_name        = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
-        s3_bucket_name     = "${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}"
-        s3_acl             = "${{ vars.S3_ACL || 'private' }}"
-        bucket_acl         = "${{ vars.S3_ACL || 'private' }}"
-        s3_force_destroy   = ${{ vars.S3_FORCE_DESTROY || 'false' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         
         # Container Configuration
-        ecr_repo_url   = "${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}"
-        container_tag  = "${{ vars.CONTAINER_TAG || 'latest' }}"
-        app_port       = "${{ vars.APP_PORT || '8900' }}"
-        
-        # Docker Images
-        backend_image  = "${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
-        frontend_image = "${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
         
         # Domain Configuration
-        domain_zone_name    = "${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}"
-        domain_name         = "${{ vars.DOMAIN_NAME || 'typerelations.com' }}"
-        sms_frontend_domain = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        sms_api_domain      = "${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
         
-        # Route53 Configuration
-        route53_zone_id = "${{ vars.ROUTE53_ZONE_ID || '' }}"
-        alb_dns_name    = "${{ vars.ALB_DNS_NAME || '' }}"
-        alb_zone_id     = "${{ vars.ALB_ZONE_ID || '' }}"
+        # Monitoring
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
         
-        # Optional Car Rental domains
-        enable_carrental_domain   = ${{ vars.ENABLE_CARRENTAL_DOMAIN || 'false' }}
-        carrental_frontend_domain = "${{ vars.CARRENTAL_FRONTEND_DOMAIN || 'carrental.greyzoneapps.com' }}"
-        carrental_api_domain      = "${{ vars.CARRENTAL_API_DOMAIN || 'api.carrental.greyzoneapps.com' }}"
+        # Secrets
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
         
-        # Monitoring Configuration
-        alert_email = "${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}"
+        # Application URLs
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
         
-        # Tags
-        tags = {
-          Project     = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
-          Environment = "${{ env.ENVIRONMENT }}"
-          ManagedBy   = "Terraform"
-          Owner       = "${{ vars.OWNER_TAG || 'GreyZone' }}"
-        }
+        # Additional Configuration
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
+      run: |
+        echo "🔧 Setting Terraform environment variables from GitHub secrets..."
+        echo "✅ All Terraform environment variables configured using GitHub Actions env context"
+        echo "📊 Environment: ${{ env.ENVIRONMENT }}"
+        echo "🔒 Secrets and variables loaded as TF_VAR_* environment variables"
         
-        common_tags = {
-          Project = "${{ vars.PROJECT_TAG || 'SMSSellerConnect' }}"
-          Owner   = "${{ vars.OWNER_TAG || 'TeamGreyZone' }}"
-        }
+        # Verify some key variables are set
+        echo "🔍 Verifying key environment variables..."
+        echo "Region: ${TF_VAR_region:-NOT_SET}"
+        echo "Environment: ${TF_VAR_environment:-NOT_SET}"
+        echo "Project: ${TF_VAR_project_name:-NOT_SET}"
+        echo "Instance Type: ${TF_VAR_instance_type:-NOT_SET}"
         
-        ########################################
-        # Application Configuration (Secrets)
-        ########################################
+        # Verify problematic tag variables are not set
+        echo "🔍 Verifying tag variables are not set..."
+        if [ -n "${TF_VAR_tags:-}" ]; then
+          echo "⚠️ WARNING: TF_VAR_tags is set: ${TF_VAR_tags}"
+        else
+          echo "✅ TF_VAR_tags is not set (good)"
+        fi
         
-        # Database Configuration
-        use_postgres  = ${{ vars.USE_POSTGRES || 'true' }}
-        db_host       = "${{ secrets.DB_HOST }}"
-        db_port       = "${{ vars.DB_PORT || '5437' }}"
-        db_name       = "${{ vars.DB_NAME || 'sms_blast' }}"
-        db_user       = "${{ secrets.DB_USER }}"
-        db_password   = "${{ secrets.DB_PASSWORD }}"
-        database_url  = "postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:${{ vars.DB_PORT || '5437' }}/${{ vars.DB_NAME || 'sms_blast' }}"
+        if [ -n "${TF_VAR_common_tags:-}" ]; then
+          echo "⚠️ WARNING: TF_VAR_common_tags is set: ${TF_VAR_common_tags}"
+        else
+          echo "✅ TF_VAR_common_tags is not set (good)"
+        fi
+
+    - name: Set Boolean Environment Variables
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting boolean environment variables for Terraform..."
         
-        # Application Security
-        flask_secret_key = "${{ secrets.FLASK_SECRET_KEY }}"
-        secret_key       = "${{ secrets.FLASK_SECRET_KEY }}"
-        jwt_secret_key   = "${{ secrets.JWT_SECRET_KEY }}"
+        # Convert string boolean values to proper booleans
+        # GitHub Actions passes booleans as strings, so we need to convert them
         
-        # Twilio Configuration
-        twilio_account_sid  = "${{ secrets.TWILIO_ACCOUNT_SID }}"
-        twilio_auth_token   = "${{ secrets.TWILIO_AUTH_TOKEN }}"
-        twilio_phone_number = "${{ secrets.TWILIO_PHONE_NUMBER }}"
-        twilio_webhook_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/webhooks/sms"
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+        fi
         
-        # OpenAI Configuration
-        openai_api_key     = "${{ secrets.OPENAI_API_KEY }}"
-        openai_model       = "${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
-        openai_temperature = "${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
         
-        # SendGrid Configuration
-        sendgrid_api_key    = "${{ secrets.SENDGRID_API_KEY }}"
-        sendgrid_from_email = "${{ vars.SENDGRID_FROM_EMAIL || 'noreply@greyzonesolutions.com' }}"
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
         
-        # AWS Configuration for Application
-        aws_access_key_id     = "${{ secrets.AWS_ACCESS_KEY_ID }}"
-        aws_secret_access_key = "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-        aws_region            = "${{ vars.AWS_REGION || 'us-east-1' }}"
-        aws_default_region    = "${{ vars.AWS_REGION || 'us-east-1' }}"
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
         
-        # API Configuration
-        api_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        vite_api_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        backend_url  = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
-        frontend_url = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        backend_port = "${{ vars.BACKEND_PORT || '8900' }}"
-        frontend_port = "${{ vars.FRONTEND_PORT || '8082' }}"
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
         
-        # CORS Configuration
-        allowed_origins = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }},https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
         
-        # Ngrok Configuration (Dev only)
-        ngrok_port       = "${{ vars.NGROK_PORT || '8900' }}"
-        ngrok_url        = "${{ vars.NGROK_URL || 'https://sms-seller-connect.ngrok-free.app' }}"
-        ngrok_auth_token = "${{ secrets.NGROK_AUTH_TOKEN }}"
-        ngrok_subdomain  = "${{ vars.NGROK_SUBDOMAIN || '' }}"
-        start_ngrok      = ${{ env.ENVIRONMENT != 'prod' && vars.START_NGROK || 'false' }}
-        
-        # Application Settings
-        debug     = ${{ env.ENVIRONMENT != 'prod' && vars.DEBUG || 'false' }}
-        log_level = "${{ vars.LOG_LEVEL || 'info' }}"
-        
-        # Hot Lead Configuration
-        hot_lead_webhook_url      = "https://${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}/api/alerts"
-        hot_lead_email_recipients = "${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'admin@greyzonesolutions.com' }}"
-        hot_lead_sms_recipients   = "${{ secrets.HOT_LEAD_SMS_RECIPIENTS || secrets.TWILIO_PHONE_NUMBER }}"
-        
-        # Rate Limiting Configuration
-        rate_limit_per_minute = "${{ vars.RATE_LIMIT_PER_MINUTE || '60' }}"
-        rate_limit_burst      = "${{ vars.RATE_LIMIT_BURST || '10' }}"
-        
-        # Session Configuration
-        session_timeout_minutes = "${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
-        remember_me_days        = "${{ vars.REMEMBER_ME_DAYS || '30' }}"
-        
-        # File Upload Configuration
-        max_file_size_mb   = "${{ vars.MAX_FILE_SIZE_MB || '10' }}"
-        allowed_file_types = "${{ vars.ALLOWED_FILE_TYPES || 'pdf,jpg,jpeg,png,doc,docx,csv' }}"
-        EOF
-        
-        echo "✅ GitHub-based terraform.tfvars created"
-        echo "📊 Variables summary:"
-        echo "- Environment: ${{ env.ENVIRONMENT }}"
-        echo "- Frontend Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_FRONTEND_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_FRONTEND_DOMAIN) || 'sms.typerelations.com' }}"
-        echo "- API Domain: ${{ env.ENVIRONMENT == 'prod' && vars.SMS_API_DOMAIN || format('%s-%s', env.ENVIRONMENT, vars.SMS_API_DOMAIN) || 'api.sms.typerelations.com' }}"
+        echo "✅ Boolean environment variables set successfully!"
 
     - name: Terraform Plan
       id: plan
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        
+        # EC2 Configuration
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        
+        # Networking Configuration
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        
+        # S3 Configuration
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        
+        # Container Configuration
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        
+        # Domain Configuration
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        
+        # Monitoring
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        
+        # Secrets
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        
+        # Application URLs
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        
+        # Additional Configuration
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "📋 Creating Terraform plan for ${{ env.ENVIRONMENT }} environment..."
         
-        # Create plan with detailed exit codes
-        set +e
-        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
-        exit_code=$?
-        set -e
+        # Debug: Show some environment variables are set
+        echo "🔍 DEBUG: Checking key variables..."
+        echo "Environment: ${TF_VAR_environment:-NOT_SET}"
+        echo "Project: ${TF_VAR_project_name:-NOT_SET}"
+        echo "Region: ${TF_VAR_region:-NOT_SET}"
+        echo "Instance Type: ${TF_VAR_instance_type:-NOT_SET}"
         
-        # Show the plan output
-        cat plan_output.txt
+        # Debug: Verify problematic tag variables are not set
+        echo "🔍 DEBUG: Verifying tag variables are not set..."
+        if [ -n "${TF_VAR_tags:-}" ]; then
+          echo "❌ ERROR: TF_VAR_tags is set: ${TF_VAR_tags}"
+        else
+          echo "✅ TF_VAR_tags is not set (good)"
+        fi
+        
+        if [ -n "${TF_VAR_common_tags:-}" ]; then
+          echo "❌ ERROR: TF_VAR_common_tags is set: ${TF_VAR_common_tags}"
+        else
+          echo "✅ TF_VAR_common_tags is not set (good)"
+        fi
+
+                 # Create plan with detailed exit codes and disable input prompts
+         echo "🚀 Starting terraform plan with timeout protection and auto-retry..."
+         
+         # Function to run terraform plan with retry on lock conflicts
+         run_terraform_plan() {
+           local attempt=1
+           local max_attempts=3
+           
+           while [ $attempt -le $max_attempts ]; do
+             echo "📋 Attempt $attempt/$max_attempts: Running terraform plan..."
+             
+             set +e
+             timeout 300 terraform plan -input=false -detailed-exitcode -no-color -out=tfplan 2>&1 | tee plan_output.txt
+             exit_code=$?
+             set -e
+            
+            # Check if timeout occurred
+            if [ $exit_code -eq 124 ]; then
+              echo "❌ Terraform plan timed out after 5 minutes"
+              exit 1
+            fi
+            
+            # Check for lock conflicts
+            if grep -q "Error acquiring the state lock" plan_output.txt; then
+              echo "🔒 Lock conflict detected on attempt $attempt"
+              
+              if [ $attempt -lt $max_attempts ]; then
+                # Extract lock ID and force unlock
+                lock_id=$(grep -A 20 "Lock Info:" plan_output.txt | grep "ID:" | awk '{print $2}' || echo "")
+                if [ -n "$lock_id" ]; then
+                  echo "🔓 Force unlocking stale lock: $lock_id"
+                  terraform force-unlock -force "$lock_id" || true
+                fi
+                
+                echo "⏳ Waiting 30 seconds before retry..."
+                sleep 30
+                attempt=$((attempt + 1))
+                continue
+              else
+                echo "❌ Failed to acquire lock after $max_attempts attempts"
+                exit 1
+              fi
+            else
+              # Plan succeeded or failed for other reasons
+              break
+            fi
+          done
+          
+          return $exit_code
+        }
+        
+        # Run terraform plan with retry logic
+        run_terraform_plan
         
         echo "🔍 DEBUG: Terraform plan exit code was: $exit_code"
         
@@ -417,6 +656,16 @@ jobs:
         fi
         
         echo "🔍 DEBUG: Plan changes detected in output: $plan_has_changes"
+        
+        # Check if there were validation errors (terraform exits with 1 for errors)
+        if grep -q "Error:" plan_output.txt; then
+          echo "❌ Terraform validation errors detected"
+          echo "status=error" >> $GITHUB_OUTPUT
+          echo "has-changes=false" >> $GITHUB_OUTPUT
+          echo "🔍 Showing validation errors:"
+          cat plan_output.txt
+          exit 1
+        fi
         
         case $exit_code in
           0)
@@ -444,9 +693,10 @@ jobs:
             echo "📝 Changes detected (exit code: $exit_code)"
             ;;
           *)
-            echo "⚠️ Unexpected exit code: $exit_code - treating as changes detected"
-            echo "status=changes-detected" >> $GITHUB_OUTPUT
-            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Unexpected exit code: $exit_code - treating as error"
+            echo "status=error" >> $GITHUB_OUTPUT
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            exit 1
             ;;
         esac
         
@@ -478,13 +728,25 @@ jobs:
     needs: [format, validate, plan]
     if: |
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
-      (github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment == 'prod') ||
-      (github.ref == 'refs/heads/develop' && needs.plan.outputs.has-changes == 'true' && github.event.inputs.environment != 'prod')
-    environment: 
-      name: ${{ github.event.inputs.environment || 'prod' }}
-      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
     
     steps:
+    - name: Auto-Deploy Notification
+      run: |
+        echo "🚀 AUTO-DEPLOYMENT TRIGGERED!"
+        echo "=============================="
+        if [ "${{ github.event.inputs.action }}" = "plan" ]; then
+          echo "🎯 Reason: Plan detected changes - proceeding to automatic deployment"
+        elif [ "${{ github.event_name }}" = "push" ]; then
+          echo "🎯 Reason: Push to main branch with infrastructure changes"
+        else
+          echo "🎯 Reason: Manual apply action requested"
+        fi
+        echo "🔧 Environment: ${{ env.ENVIRONMENT }}"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo ""
+
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -518,19 +780,224 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
+    - name: Set Environment Variables for Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
+      run: |
+        echo "🔧 Setting up environment variables for apply..."
+        echo "✅ All Terraform environment variables configured using GitHub Actions env context"
+
+    - name: Set Boolean Environment Variables for Apply
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔧 Setting boolean environment variables for Terraform Apply..."
+        
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+        fi
+        
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
+        
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
+        
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
+        
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
+        
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        
+        echo "✅ Boolean environment variables set for Apply!"
+
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "🚀 Applying Terraform changes for ${{ env.ENVIRONMENT }} environment..."
         echo "📍 Backend: s3://${{ env.STATE_BUCKET }}/${{ env.STATE_KEY }}"
         
-        if [ -f "tfplan" ]; then
-          echo "📋 Applying saved plan..."
-          terraform apply -auto-approve tfplan
-        else
-          echo "📋 Creating and applying new plan..."
-          terraform apply -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
-        fi
+                 if [ -f "tfplan" ]; then
+           echo "📋 Applying saved plan..."
+           terraform apply -auto-approve tfplan
+         else
+           echo "📋 Creating and applying new plan..."
+           terraform apply -auto-approve
+         fi
         
         echo "✅ SMS Seller Connect infrastructure deployment completed!"
 
@@ -736,13 +1203,34 @@ jobs:
         echo "- ✅ Docker containerized applications"
         echo "- ✅ Nginx reverse proxy"
 
+    - name: Display Route53 Name Servers
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🌐 Route53 Name Servers for Domain Configuration"
+        echo "================================================"
+        
+        # Get the name servers from Terraform output
+        if terraform output route53_name_servers > /dev/null 2>&1; then
+          NAME_SERVERS=$(terraform output -raw route53_name_servers 2>/dev/null || echo "N/A")
+          ZONE_ID=$(terraform output -raw route53_zone_id 2>/dev/null || echo "N/A")
+          ZONE_NAME=$(terraform output -raw route53_zone_name 2>/dev/null || echo "N/A")
+          
+          echo "📋 **IMPORTANT**: Update your domain registrar with these name servers:"
+          echo "🆔 Zone ID: $ZONE_ID"
+          echo "🌐 Zone Name: $ZONE_NAME"
+          echo ""
+          echo "📝 Name Servers to configure with your registrar:"
+          echo "$NAME_SERVERS" | sed 's/\[//g' | sed 's/\]//g' | sed 's/,/\n/g' | sed 's/"//g' | sed 's/^ *//g'
+          echo ""
+          echo "⚠️  **Domain will not resolve until name servers are updated with your registrar!**"
+        else
+          echo "⚠️ Could not retrieve Route53 name servers from Terraform output"
+        fi
+
   destroy:
     name: '💥 Destroy Infrastructure'
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
-    environment: 
-      name: destroy-approval-${{ github.event.inputs.environment || 'prod' }}
-      url: https://${{ env.SMS_FRONTEND_DOMAIN }}
     
     steps:
     - name: Checkout
@@ -771,37 +1259,305 @@ jobs:
           -backend-config="dynamodb_table=${{ env.LOCK_TABLE }}" \
           -backend-config="encrypt=true"
 
-    - name: Create Environment-Specific Variables
+    - name: Set Environment Variables for Destroy
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
+      run: |
+        echo "🔧 Setting up environment variables for destroy..."
+        echo "✅ All Terraform environment variables configured using GitHub Actions env context"
+
+    - name: Set Boolean Environment Variables for Destroy
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📝 Creating environment-specific terraform.tfvars for destruction..."
+        echo "🔧 Setting boolean environment variables for Terraform Destroy..."
         
-        # Copy base terraform.tfvars
-        cp terraform.tfvars terraform-${{ env.ENVIRONMENT }}.tfvars
-        
-        # Update environment-specific values
-        sed -i "s/environment *= *\".*\"/environment = \"${{ env.ENVIRONMENT }}\"/" terraform-${{ env.ENVIRONMENT }}.tfvars
-        
-        # Update domain based on environment
-        if [ "${{ env.ENVIRONMENT }}" != "prod" ]; then
-          sed -i "s/sms_frontend_domain *= *\"sms\./sms_frontend_domain = \"${{ env.ENVIRONMENT }}-sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
-          sed -i "s/sms_api_domain *= *\"api\.sms\./sms_api_domain = \"${{ env.ENVIRONMENT }}-api.sms./" terraform-${{ env.ENVIRONMENT }}.tfvars
+        # Set use_default_vpc
+        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
         fi
+        
+        # Set s3_force_destroy
+        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+          echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+        fi
+        
+        # Set use_postgres
+        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+          echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+        fi
+        
+        # Set start_ngrok
+        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+          echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+        fi
+        
+        # Set debug
+        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+          echo "TF_VAR_debug=true" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_debug=false" >> $GITHUB_ENV
+        fi
+        
+        # Set enable_carrental_domain (hardcoded to false)
+        echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        
+        echo "✅ Boolean environment variables set for Destroy!"
 
     - name: Show Resources to be Destroyed
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "🔍 Resources that will be destroyed in ${{ env.ENVIRONMENT }}:"
+        
         terraform state list
         echo ""
         echo "📋 Destroy plan:"
-        terraform plan -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -destroy -no-color
+        terraform plan -destroy -no-color
 
     - name: Terraform Destroy
       working-directory: ${{ env.TF_WORKING_DIR }}
+      env:
+        # Basic Configuration
+        TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT }}
+        TF_VAR_project_name: ${{ vars.PROJECT_NAME || 'sms-seller-connect' }}
+        TF_VAR_ami_id: ${{ vars.AMI_ID || 'ami-0c02fb55956c7d316' }}
+        TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't2.micro' }}
+        TF_VAR_key_name: ${{ vars.KEY_NAME || 'sms-seller-connect-key' }}
+        TF_VAR_instance_name: ${{ vars.INSTANCE_NAME || 'sms-seller-connect' }}
+        TF_VAR_vpc_name: ${{ vars.VPC_NAME || 'Grey-VPC' }}
+        TF_VAR_subnet_name: ${{ vars.SUBNET_NAME || 'Grey-private-subnet' }}
+        TF_VAR_subnet_name_b: ${{ vars.SUBNET_NAME_B || 'Grey-public-subnet' }}
+        TF_VAR_admin_ssh_cidr: ${{ vars.ADMIN_SSH_CIDR || '0.0.0.0/0' }}
+        TF_VAR_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_bucket_name: ${{ vars.S3_BUCKET_NAME || 'sms-seller-connect-bucket' }}
+        TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
+        TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
+        TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
+        TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_sms_api_domain: ${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_alert_email: ${{ vars.ALERT_EMAIL || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        TF_VAR_db_host: ${{ secrets.DB_HOST }}
+        TF_VAR_db_user: ${{ secrets.DB_USER }}
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+        TF_VAR_flask_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_jwt_secret_key: ${{ secrets.JWT_SECRET_KEY }}
+        TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+        TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+        TF_VAR_twilio_phone_number: ${{ secrets.TWILIO_PHONE_NUMBER }}
+        TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+        TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+        TF_VAR_ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+        TF_VAR_hot_lead_sms_recipients: ${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}
+        TF_VAR_database_url: postgresql://${{ secrets.DB_USER }}:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5437/sms_blast
+        TF_VAR_twilio_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/webhooks/sms
+        TF_VAR_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_frontend_url: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_db_port: ${{ vars.DB_PORT || '5437' }}
+        TF_VAR_db_name: ${{ vars.DB_NAME || 'sms_blast' }}
+        TF_VAR_secret_key: ${{ secrets.FLASK_SECRET_KEY }}
+        TF_VAR_openai_model: ${{ vars.OPENAI_MODEL || 'gpt-3.5-turbo' }}
+        TF_VAR_openai_temperature: ${{ vars.OPENAI_TEMPERATURE || '0.7' }}
+        TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}
+        TF_VAR_aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        TF_VAR_aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_aws_default_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        TF_VAR_backend_port: ${{ vars.BACKEND_PORT || '8900' }}
+        TF_VAR_frontend_port: ${{ vars.FRONTEND_PORT || '3000' }}
+        TF_VAR_vite_api_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_backend_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}
+        TF_VAR_allowed_origins: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
+        TF_VAR_ngrok_port: ${{ vars.NGROK_PORT || '4040' }}
+        TF_VAR_ngrok_url: ${{ vars.NGROK_URL || '' }}
+        TF_VAR_ngrok_subdomain: ${{ vars.NGROK_SUBDOMAIN || '' }}
+        TF_VAR_log_level: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TF_VAR_hot_lead_webhook_url: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}/api/alerts
+        TF_VAR_hot_lead_email_recipients: ${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}
+        TF_VAR_rate_limit_per_minute: ${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}
+        TF_VAR_rate_limit_burst: ${{ vars.RATE_LIMIT_BURST || '200' }}
+        TF_VAR_session_timeout_minutes: ${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}
+        TF_VAR_remember_me_days: ${{ vars.REMEMBER_ME_DAYS || '30' }}
+        TF_VAR_max_file_size_mb: ${{ vars.MAX_FILE_SIZE_MB || '10' }}
+        TF_VAR_allowed_file_types: ${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}
+        TF_VAR_carrental_frontend_domain: ''
+        TF_VAR_carrental_api_domain: ''
+        TF_VAR_subnet_id: ''
+        TF_VAR_route53_zone_id: ''
+        TF_VAR_alb_dns_name: ''
+        TF_VAR_alb_zone_id: ''
       run: |
         echo "💥 Destroying SMS Seller Connect infrastructure in ${{ env.ENVIRONMENT }}..."
-        terraform destroy -var-file=terraform-${{ env.ENVIRONMENT }}.tfvars -auto-approve
+        
+        terraform destroy -auto-approve
+        
         echo "🗑️ Destruction completed!"
 
     - name: Display Destroy Results
@@ -816,3 +1572,462 @@ jobs:
         echo "${{ job.status == 'success' && '⚠️ **All SMS Seller Connect infrastructure has been destroyed!**' || '❌ **Destruction failed - some resources may remain**' }}"
         echo ""
         echo "**Note**: State file preserved in S3 for audit purposes."
+
+  verify-secrets:
+    name: '🔐 Verify GitHub Secrets & Variables'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'verify-secrets'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Verify Required Secrets
+      run: |
+        echo "🔐 Verifying GitHub Secrets and Variables..."
+        echo ""
+        
+        # Track missing secrets/variables
+        missing_secrets=()
+        missing_vars=()
+        
+        # Required Secrets
+        echo "### Required Secrets:"
+        secrets=(
+          "AWS_ACCESS_KEY_ID"
+          "AWS_SECRET_ACCESS_KEY"
+          "SSH_PUBLIC_KEY"
+          "DB_HOST"
+          "DB_USER"
+          "DB_PASSWORD"
+          "FLASK_SECRET_KEY"
+          "JWT_SECRET_KEY"
+          "TWILIO_ACCOUNT_SID"
+          "TWILIO_AUTH_TOKEN"
+          "TWILIO_PHONE_NUMBER"
+          "OPENAI_API_KEY"
+          "SENDGRID_API_KEY"
+          "NGROK_AUTH_TOKEN"
+          "HOT_LEAD_SMS_RECIPIENTS"
+        )
+        
+        for secret in "${secrets[@]}"; do
+          case "$secret" in
+            "AWS_ACCESS_KEY_ID")
+              if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.AWS_ACCESS_KEY_ID }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "AWS_SECRET_ACCESS_KEY")
+              if [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.AWS_SECRET_ACCESS_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "SSH_PUBLIC_KEY")
+              if [ -n "${{ secrets.SSH_PUBLIC_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.SSH_PUBLIC_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "DB_HOST")
+              if [ -n "${{ secrets.DB_HOST }}" ]; then
+                echo "✅ $secret - Set"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "DB_USER")
+              if [ -n "${{ secrets.DB_USER }}" ]; then
+                echo "✅ $secret - Set"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "DB_PASSWORD")
+              if [ -n "${{ secrets.DB_PASSWORD }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.DB_PASSWORD }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "FLASK_SECRET_KEY")
+              if [ -n "${{ secrets.FLASK_SECRET_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.FLASK_SECRET_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "JWT_SECRET_KEY")
+              if [ -n "${{ secrets.JWT_SECRET_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.JWT_SECRET_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "TWILIO_ACCOUNT_SID")
+              if [ -n "${{ secrets.TWILIO_ACCOUNT_SID }}" ]; then
+                echo "✅ $secret - Set"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "TWILIO_AUTH_TOKEN")
+              if [ -n "${{ secrets.TWILIO_AUTH_TOKEN }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.TWILIO_AUTH_TOKEN }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "TWILIO_PHONE_NUMBER")
+              if [ -n "${{ secrets.TWILIO_PHONE_NUMBER }}" ]; then
+                echo "✅ $secret - Set"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "OPENAI_API_KEY")
+              if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.OPENAI_API_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "SENDGRID_API_KEY")
+              if [ -n "${{ secrets.SENDGRID_API_KEY }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.SENDGRID_API_KEY }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "NGROK_AUTH_TOKEN")
+              if [ -n "${{ secrets.NGROK_AUTH_TOKEN }}" ]; then
+                echo "✅ $secret - Set (${#{{ secrets.NGROK_AUTH_TOKEN }}} chars)"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+            "HOT_LEAD_SMS_RECIPIENTS")
+              if [ -n "${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}" ]; then
+                echo "✅ $secret - Set"
+              else
+                echo "❌ $secret - Missing"
+                missing_secrets+=("$secret")
+              fi
+              ;;
+          esac
+        done
+        
+        echo ""
+        echo "### Required Variables:"
+        variables=(
+          "BACKEND_IMAGE"
+          "FRONTEND_IMAGE"
+          "SMS_FRONTEND_DOMAIN"
+          "SMS_API_DOMAIN"
+          "SENDGRID_FROM_EMAIL"
+          "DB_PORT"
+          "DB_NAME"
+        )
+        
+        for var in "${variables[@]}"; do
+          case "$var" in
+            "BACKEND_IMAGE")
+              if [ -n "${{ vars.BACKEND_IMAGE }}" ]; then
+                echo "✅ $var - ${{ vars.BACKEND_IMAGE }}"
+              else
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+              fi
+              ;;
+            "FRONTEND_IMAGE")
+              if [ -n "${{ vars.FRONTEND_IMAGE }}" ]; then
+                echo "✅ $var - ${{ vars.FRONTEND_IMAGE }}"
+              else
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+              fi
+              ;;
+            "SMS_FRONTEND_DOMAIN")
+              if [ -n "${{ vars.SMS_FRONTEND_DOMAIN }}" ]; then
+                echo "✅ $var - ${{ vars.SMS_FRONTEND_DOMAIN }}"
+              else
+                echo "⚠️ $var - Using fallback: sms.typerelations.com"
+              fi
+              ;;
+            "SMS_API_DOMAIN")
+              if [ -n "${{ vars.SMS_API_DOMAIN }}" ]; then
+                echo "✅ $var - ${{ vars.SMS_API_DOMAIN }}"
+              else
+                echo "⚠️ $var - Using fallback: api.sms.typerelations.com"
+              fi
+              ;;
+            "SENDGRID_FROM_EMAIL")
+              if [ -n "${{ vars.SENDGRID_FROM_EMAIL }}" ]; then
+                echo "✅ $var - ${{ vars.SENDGRID_FROM_EMAIL }}"
+              else
+                echo "⚠️ $var - Using fallback: noreply@typerelations.com"
+              fi
+              ;;
+            "DB_PORT")
+              if [ -n "${{ vars.DB_PORT }}" ]; then
+                echo "✅ $var - ${{ vars.DB_PORT }}"
+              else
+                echo "⚠️ $var - Using fallback: 5437"
+              fi
+              ;;
+            "DB_NAME")
+              if [ -n "${{ vars.DB_NAME }}" ]; then
+                echo "✅ $var - ${{ vars.DB_NAME }}"
+              else
+                echo "⚠️ $var - Using fallback: sms_blast"
+              fi
+              ;;
+          esac
+        done
+        
+        echo ""
+        echo "### Summary:"
+        if [ ${#missing_secrets[@]} -eq 0 ] && [ ${#missing_vars[@]} -eq 0 ]; then
+          echo "🎉 All required secrets and variables are configured!"
+        else
+          echo "❌ Missing configuration:"
+          if [ ${#missing_secrets[@]} -gt 0 ]; then
+            echo "Missing secrets: ${missing_secrets[*]}"
+          fi
+          if [ ${#missing_vars[@]} -gt 0 ]; then
+            echo "Missing variables: ${missing_vars[*]}"
+          fi
+          exit 1
+        fi
+
+  redeploy:
+    name: '🚀 Redeploy Application'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'redeploy'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Upload Redeployment Script to S3
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "📤 Uploading redeployment script to S3..."
+        aws s3 cp scripts/redeploy-application.sh s3://sms-seller-connect-bucket/scripts/redeploy-application.sh
+        echo "✅ Redeployment script uploaded"
+
+    - name: Get EC2 Instance Details
+      id: ec2-details
+      run: |
+        echo "🔍 Getting EC2 instance details..."
+        
+        INSTANCE_ID=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=sms-seller-connect-${{ env.ENVIRONMENT }}-ec2" "Name=instance-state-name,Values=running" \
+          --query 'Reservations[0].Instances[0].InstanceId' \
+          --output text)
+        
+        if [ "$INSTANCE_ID" = "None" ] || [ "$INSTANCE_ID" = "null" ]; then
+          echo "❌ No running EC2 instance found for environment: ${{ env.ENVIRONMENT }}"
+          exit 1
+        fi
+        
+        INSTANCE_IP=$(aws ec2 describe-instances \
+          --instance-ids "$INSTANCE_ID" \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text)
+        
+        echo "✅ Found EC2 instance:"
+        echo "Instance ID: $INSTANCE_ID"
+        echo "Public IP: $INSTANCE_IP"
+        
+        echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+        echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+
+    - name: Execute Redeployment via SSM
+      run: |
+        echo "🚀 Executing redeployment on EC2 instance..."
+        
+        # Create the redeployment command with all environment variables
+        COMMAND=$(cat << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        # Export all environment variables for the redeployment script
+        export AWS_REGION="${{ env.AWS_REGION }}"
+        export S3_BUCKET="sms-seller-connect-bucket"
+        export ENVIRONMENT="${{ env.ENVIRONMENT }}"
+        
+        # Docker Images
+        export BACKEND_IMAGE="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
+        export FRONTEND_IMAGE="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
+        
+        # Domain Configuration
+        export SMS_API_DOMAIN="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        export SMS_FRONTEND_DOMAIN="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        
+        # Database Configuration
+        export DB_HOST="${{ secrets.DB_HOST }}"
+        export DB_PORT="${{ vars.DB_PORT || '5437' }}"
+        export DB_NAME="${{ vars.DB_NAME || 'sms_blast' }}"
+        export DB_USER="${{ secrets.DB_USER }}"
+        export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+        
+        # Application Configuration
+        export SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}"
+        export JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}"
+        export TWILIO_ACCOUNT_SID="${{ secrets.TWILIO_ACCOUNT_SID }}"
+        export TWILIO_AUTH_TOKEN="${{ secrets.TWILIO_AUTH_TOKEN }}"
+        export TWILIO_PHONE_NUMBER="${{ secrets.TWILIO_PHONE_NUMBER }}"
+        export OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
+        export OPENAI_MODEL="${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
+        export OPENAI_TEMPERATURE="${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
+        
+        # SendGrid Configuration
+        export SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}"
+        export SENDGRID_FROM_EMAIL="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
+        
+        # AWS Configuration
+        export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+        export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        export S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME || 'grey-database-bucket' }}"
+        
+        # Hot Lead Configuration
+        export HOT_LEAD_EMAIL_RECIPIENTS="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
+        export HOT_LEAD_SMS_RECIPIENTS="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
+        
+        # Rate Limiting
+        export RATE_LIMIT_PER_MINUTE="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
+        export RATE_LIMIT_BURST="${{ vars.RATE_LIMIT_BURST || '200' }}"
+        
+        # Session Configuration
+        export SESSION_TIMEOUT_MINUTES="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
+        export REMEMBER_ME_DAYS="${{ vars.REMEMBER_ME_DAYS || '30' }}"
+        
+        # File Upload Configuration
+        export MAX_FILE_SIZE_MB="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
+        export ALLOWED_FILE_TYPES="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
+        
+        # Download and execute the redeployment script
+        echo "📥 Downloading redeployment script..."
+        aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh
+        chmod +x /tmp/redeploy-application.sh
+        
+        echo "🚀 Executing redeployment..."
+        /tmp/redeploy-application.sh
+        EOF
+        )
+        
+        # Execute the command via SSM
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[\"$COMMAND\"]" \
+          --comment "SMS Seller Connect Application Redeployment" \
+          --query 'Command.CommandId' \
+          --output text)
+        
+        echo "📋 SSM Command ID: $COMMAND_ID"
+        
+        # Wait for command to complete
+        echo "⏳ Waiting for redeployment to complete..."
+        aws ssm wait command-executed \
+          --command-id "$COMMAND_ID" \
+          --instance-id "${{ steps.ec2-details.outputs.instance_id }}"
+        
+        # Get command output
+        echo "📊 Redeployment output:"
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+          --query 'StandardOutputContent' \
+          --output text
+        
+        # Check if command succeeded
+        STATUS=$(aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+          --query 'Status' \
+          --output text)
+        
+        if [ "$STATUS" = "Success" ]; then
+          echo "🎉 Redeployment completed successfully!"
+        else
+          echo "❌ Redeployment failed with status: $STATUS"
+          echo "Error output:"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+            --query 'StandardErrorContent' \
+            --output text
+          exit 1
+        fi
+
+    - name: Verify Application Health
+      run: |
+        echo "🔍 Verifying application health..."
+        
+        # Get ALB DNS name
+        ALB_DNS=$(aws elbv2 describe-load-balancers \
+          --names "sms-seller-connect-${{ env.ENVIRONMENT }}-alb" \
+          --query 'LoadBalancers[0].DNSName' \
+          --output text)
+        
+        if [ "$ALB_DNS" != "None" ] && [ "$ALB_DNS" != "null" ]; then
+          echo "🌐 Testing ALB health endpoint..."
+          
+          # Test ALB health endpoint with retries
+          for i in {1..10}; do
+            if curl -f -s "http://$ALB_DNS/alb-health" > /dev/null; then
+              echo "✅ ALB health check passed"
+              break
+            else
+              if [ $i -eq 10 ]; then
+                echo "❌ ALB health check failed after 10 attempts"
+              else
+                echo "⏳ Attempt $i/10 failed, retrying in 30s..."
+                sleep 30
+              fi
+            fi
+          done
+        fi
+        
+        echo "🎉 Application redeployment verification completed!"
+
+    - name: Display Redeployment Results
+      if: always()
+      run: |
+        echo "#### 🚀 SMS Seller Connect Application Redeployment Results"
+        echo ""
+        echo "**Status**: ${{ job.status == 'success' && '✅ Successfully Redeployed' || '❌ Redeployment Failed' }}"
+        echo "**Environment**: ${{ env.ENVIRONMENT }}"
+        echo "**Instance ID**: ${{ steps.ec2-details.outputs.instance_id }}"
+        echo "**Instance IP**: ${{ steps.ec2-details.outputs.instance_ip }}"
+        echo ""
+        echo "**Frontend URL**: https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
+        echo "**API URL**: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
+        echo ""
+        echo "${{ job.status == 'success' && '🎉 **Application has been successfully redeployed without infrastructure changes!**' || '❌ **Redeployment failed - check logs for details**' }}"

@@ -11,7 +11,7 @@ data "aws_caller_identity" "current" {}
 # VPC - Use default VPC or specify VPC name
 data "aws_vpc" "selected" {
   default = var.use_default_vpc
-  
+
   dynamic "filter" {
     for_each = var.use_default_vpc ? [] : [1]
     content {
@@ -21,24 +21,33 @@ data "aws_vpc" "selected" {
   }
 }
 
-# Public Subnet A - First subnet for ALB and EC2
-data "aws_subnet" "public_subnet" {
-  vpc_id = data.aws_vpc.selected.id
-  
+# Get all public subnets for ALB (need at least 2 in different AZs)
+data "aws_subnets" "public" {
   filter {
-    name   = "tag:Name"
-    values = [var.subnet_name]
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected.id]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+
+  # Filter for public subnets (those with map_public_ip_on_launch = true)
+  filter {
+    name   = "map-public-ip-on-launch"
+    values = ["true"]
   }
 }
 
-# Public Subnet B - Second subnet for ALB (required for multi-AZ)
+# Primary subnet for EC2 instance
+data "aws_subnet" "public_subnet" {
+  id = data.aws_subnets.public.ids[0]
+}
+
+# Secondary subnet for ALB (different from primary)
 data "aws_subnet" "public_subnet_b" {
-  vpc_id = data.aws_vpc.selected.id
-  
-  filter {
-    name   = "tag:Name"
-    values = [var.subnet_name_b]
-  }
+  id = length(data.aws_subnets.public.ids) > 1 ? data.aws_subnets.public.ids[1] : data.aws_subnets.public.ids[0]
 }
 
 # Get availability zones

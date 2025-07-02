@@ -3,46 +3,46 @@
 ########################################
 
 # CloudWatch Log Group for Application Logs
-resource "aws_cloudwatch_log_group" "car_rental_app_logs" {
-  name              = "/aws/ec2/car-rental-app"
+resource "aws_cloudwatch_log_group" "sms_seller_connect_app_logs" {
+  name              = "/aws/ec2/sms-seller-connect-app"
   retention_in_days = 14
 
   tags = merge(
     var.tags,
     {
-      Name        = "car-rental-app-logs"
+      Name        = "sms-seller-connect-app-logs"
       Environment = var.environment
-      Purpose     = "Application Logs"
+      Purpose     = "SMS Application Logs"
     }
   )
 }
 
 # CloudWatch Log Group for Docker Container Logs
-resource "aws_cloudwatch_log_group" "docker_container_logs" {
-  name              = "/aws/ec2/docker/car-rental"
+resource "aws_cloudwatch_log_group" "sms_docker_container_logs" {
+  name              = "/aws/ec2/docker/sms-seller-connect"
   retention_in_days = 7
 
   tags = merge(
     var.tags,
     {
-      Name        = "docker-container-logs"
+      Name        = "sms-docker-container-logs"
       Environment = var.environment
-      Purpose     = "Docker Container Logs"
+      Purpose     = "SMS Docker Container Logs"
     }
   )
 }
 
 # CloudWatch Log Group for System Logs
-resource "aws_cloudwatch_log_group" "system_logs" {
-  name              = "/aws/ec2/system/car-rental"
+resource "aws_cloudwatch_log_group" "sms_system_logs" {
+  name              = "/aws/ec2/system/sms-seller-connect"
   retention_in_days = 30
 
   tags = merge(
     var.tags,
     {
-      Name        = "system-logs"
+      Name        = "sms-system-logs"
       Environment = var.environment
-      Purpose     = "EC2 System Logs"
+      Purpose     = "SMS EC2 System Logs"
     }
   )
 }
@@ -62,11 +62,11 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_cpu" {
   statistic           = "Average"
   threshold           = "80"
   alarm_description   = "This metric monitors ec2 cpu utilization"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
-  ok_actions          = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
+  ok_actions          = [aws_sns_topic.sms_seller_connect_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
   }
 
   tags = var.tags
@@ -83,10 +83,10 @@ resource "aws_cloudwatch_metric_alarm" "ec2_high_memory" {
   statistic           = "Average"
   threshold           = "85"
   alarm_description   = "This metric monitors ec2 memory utilization"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
   }
 
   tags = var.tags
@@ -103,10 +103,10 @@ resource "aws_cloudwatch_metric_alarm" "ec2_low_disk_space" {
   statistic           = "Average"
   threshold           = "20"
   alarm_description   = "This metric monitors ec2 disk space"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
 
   dimensions = {
-    InstanceId = aws_instance.gray_ec2.id
+    InstanceId = aws_instance.sms_seller_connect_ec2.id
     Filesystem = "/"
   }
 
@@ -124,10 +124,10 @@ resource "aws_cloudwatch_metric_alarm" "app_health_check" {
   statistic           = "Sum"
   threshold           = "1"
   alarm_description   = "This metric monitors application health via ALB"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
 
   dimensions = {
-    LoadBalancer = var.alb_dns_name
+    LoadBalancer = aws_lb.main.arn_suffix
   }
 
   tags = var.tags
@@ -140,7 +140,7 @@ resource "aws_cloudwatch_metric_alarm" "app_health_check" {
 # Custom Metric for Failed Bookings
 resource "aws_cloudwatch_log_metric_filter" "failed_bookings" {
   name           = "FailedBookings"
-  log_group_name = aws_cloudwatch_log_group.car_rental_app_logs.name
+  log_group_name = aws_cloudwatch_log_group.sms_seller_connect_app_logs.name
   pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Booking failed*\"]"
 
   metric_transformation {
@@ -153,7 +153,7 @@ resource "aws_cloudwatch_log_metric_filter" "failed_bookings" {
 # Custom Metric for Payment Failures
 resource "aws_cloudwatch_log_metric_filter" "payment_failures" {
   name           = "PaymentFailures"
-  log_group_name = aws_cloudwatch_log_group.car_rental_app_logs.name
+  log_group_name = aws_cloudwatch_log_group.sms_seller_connect_app_logs.name
   pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Payment failed*\"]"
 
   metric_transformation {
@@ -166,7 +166,7 @@ resource "aws_cloudwatch_log_metric_filter" "payment_failures" {
 # Custom Metric for Database Connection Errors
 resource "aws_cloudwatch_log_metric_filter" "database_errors" {
   name           = "DatabaseErrors"
-  log_group_name = aws_cloudwatch_log_group.car_rental_app_logs.name
+  log_group_name = aws_cloudwatch_log_group.sms_seller_connect_app_logs.name
   pattern        = "[timestamp, requestId, level=\"ERROR\", message=\"Database*\"]"
 
   metric_transformation {
@@ -191,7 +191,7 @@ resource "aws_cloudwatch_metric_alarm" "failed_bookings_alarm" {
   statistic           = "Sum"
   threshold           = "3"
   alarm_description   = "Alert when more than 3 bookings fail in 5 minutes"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
   treat_missing_data  = "notBreaching"
 
   tags = var.tags
@@ -208,7 +208,7 @@ resource "aws_cloudwatch_metric_alarm" "payment_failures_alarm" {
   statistic           = "Sum"
   threshold           = "2"
   alarm_description   = "Alert when more than 2 payments fail in 5 minutes"
-  alarm_actions       = [aws_sns_topic.car_rental_alerts.arn]
+  alarm_actions       = [aws_sns_topic.sms_seller_connect_alerts.arn]
   treat_missing_data  = "notBreaching"
 
   tags = var.tags
@@ -219,22 +219,22 @@ resource "aws_cloudwatch_metric_alarm" "payment_failures_alarm" {
 ########################################
 
 # SNS Topic for CloudWatch Alarms
-resource "aws_sns_topic" "car_rental_alerts" {
-  name = "car-rental-alerts"
+resource "aws_sns_topic" "sms_seller_connect_alerts" {
+  name = "sms-seller-connect-alerts"
 
   tags = merge(
     var.tags,
     {
-      Name        = "car-rental-alerts"
+      Name        = "sms-seller-connect-alerts"
       Environment = var.environment
-      Purpose     = "CloudWatch Alerts"
+      Purpose     = "SMS CloudWatch Alerts"
     }
   )
 }
 
 # SNS Topic Subscription - Email
 resource "aws_sns_topic_subscription" "email_alerts" {
-  topic_arn = aws_sns_topic.car_rental_alerts.arn
+  topic_arn = aws_sns_topic.sms_seller_connect_alerts.arn
   protocol  = "email"
   endpoint  = var.alert_email
 }
@@ -257,9 +257,9 @@ resource "aws_cloudwatch_dashboard" "car_rental_dashboard" {
 
         properties = {
           metrics = [
-            ["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.gray_ec2.id],
-            ["CWAgent", "MemoryUtilization", "InstanceId", aws_instance.gray_ec2.id],
-            ["CWAgent", "DiskSpaceUtilization", "InstanceId", aws_instance.gray_ec2.id, "Filesystem", "/"]
+            ["AWS/EC2", "CPUUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id],
+            ["CWAgent", "MemoryUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id],
+            ["CWAgent", "DiskSpaceUtilization", "InstanceId", aws_instance.sms_seller_connect_ec2.id, "Filesystem", "/"]
           ]
           view    = "timeSeries"
           stacked = false
@@ -296,7 +296,7 @@ resource "aws_cloudwatch_dashboard" "car_rental_dashboard" {
         height = 6
 
         properties = {
-          query  = "SOURCE '${aws_cloudwatch_log_group.car_rental_app_logs.name}' | fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20"
+          query  = "SOURCE '${aws_cloudwatch_log_group.sms_seller_connect_app_logs.name}' | fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 20"
           region = var.region
           title  = "Recent Application Errors"
           view   = "table"
@@ -311,8 +311,8 @@ resource "aws_cloudwatch_dashboard" "car_rental_dashboard" {
 ########################################
 
 # IAM Role for CloudWatch Agent
-resource "aws_iam_role" "cloudwatch_agent_role" {
-  name = "CloudWatchAgentServerRole"
+resource "aws_iam_role" "sms_cloudwatch_agent_role" {
+  name = "SMSSellerConnectCloudWatchAgentRole"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -328,20 +328,22 @@ resource "aws_iam_role" "cloudwatch_agent_role" {
   })
 
   tags = var.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Attach CloudWatch Agent Policy
 resource "aws_iam_role_policy_attachment" "cloudwatch_agent_policy" {
-  role       = aws_iam_role.cloudwatch_agent_role.name
+  role       = aws_iam_role.sms_cloudwatch_agent_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 # Instance Profile for CloudWatch Agent
-resource "aws_iam_instance_profile" "cloudwatch_agent_profile" {
+# Use existing CloudWatch Agent instance profile
+data "aws_iam_instance_profile" "cloudwatch_agent_profile" {
   name = "CloudWatchAgentServerProfile"
-  role = aws_iam_role.cloudwatch_agent_role.name
-
-  tags = var.tags
 }
 
 ########################################
@@ -350,8 +352,9 @@ resource "aws_iam_instance_profile" "cloudwatch_agent_profile" {
 
 # Store CloudWatch Agent config in Parameter Store
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
-  name = "/car-rental/cloudwatch-agent-config"
-  type = "String"
+  name      = "/car-rental/cloudwatch-agent-config"
+  type      = "String"
+  overwrite = true
   value = jsonencode({
     agent = {
       metrics_collection_interval = 60
@@ -363,13 +366,13 @@ resource "aws_ssm_parameter" "cloudwatch_agent_config" {
           collect_list = [
             {
               file_path         = "/var/log/docker-container.log"
-              log_group_name    = aws_cloudwatch_log_group.docker_container_logs.name
+              log_group_name    = aws_cloudwatch_log_group.sms_docker_container_logs.name
               log_stream_name   = "{instance_id}/docker"
               retention_in_days = 7
             },
             {
               file_path         = "/var/log/messages"
-              log_group_name    = aws_cloudwatch_log_group.system_logs.name
+              log_group_name    = aws_cloudwatch_log_group.sms_system_logs.name
               log_stream_name   = "{instance_id}/system"
               retention_in_days = 30
             }

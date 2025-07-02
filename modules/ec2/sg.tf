@@ -25,6 +25,15 @@ resource "aws_security_group" "ec2_sg" {
     description     = "HTTPS from ALB"
   }
 
+  # Port 8905 from ALB for direct API access
+  ingress {
+    from_port       = 8905
+    to_port         = 8905
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+    description     = "Port 8905 from ALB for direct API access"
+  }
+
   # SSH from your office IP
   ingress {
     from_port   = 22

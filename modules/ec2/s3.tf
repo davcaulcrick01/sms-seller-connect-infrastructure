@@ -6,6 +6,15 @@ resource "aws_s3_bucket" "sms_seller_connect_bucket" {
   bucket        = var.s3_bucket_name
   force_destroy = var.s3_force_destroy
 
+  # Lifecycle rule to prevent accidental destruction
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      # Allow force_destroy changes for emergency cleanup if needed
+      # force_destroy,
+    ]
+  }
+
   tags = merge(
     var.tags,
     {

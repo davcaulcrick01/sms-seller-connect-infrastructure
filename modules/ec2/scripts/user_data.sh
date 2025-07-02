@@ -132,11 +132,11 @@ EOF
     log_to_cloudwatch "INFO" "Docker and Docker Compose installation completed"
 }
 
-# Function to install AWS CLI
+# Function to install AWS CLI and required tools
 install_aws_cli() {
-    log_to_cloudwatch "INFO" "Installing AWS CLI..."
-    sudo yum install -y aws-cli
-    log_to_cloudwatch "INFO" "AWS CLI installation completed"
+    log_to_cloudwatch "INFO" "Installing AWS CLI and required tools..."
+    sudo yum install -y aws-cli gettext
+    log_to_cloudwatch "INFO" "AWS CLI and tools installation completed"
 }
 
 # Function to verify environment variables
@@ -242,13 +242,67 @@ start_services() {
     
     cd /app/sms-seller-connect
     
+    # Debug: Log the image variables before creating .env file
+    log_to_cloudwatch "INFO" "DEBUG: BACKEND_IMAGE=${BACKEND_IMAGE}"
+    log_to_cloudwatch "INFO" "DEBUG: FRONTEND_IMAGE=${FRONTEND_IMAGE}"
+    log_to_cloudwatch "INFO" "DEBUG: SMS_API_DOMAIN=${SMS_API_DOMAIN}"
+    log_to_cloudwatch "INFO" "DEBUG: SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}"
+    
+    # Set fallback values if variables are empty
+    if [ -z "${BACKEND_IMAGE}" ]; then
+        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using fallback: ${BACKEND_IMAGE}"
+    fi
+    
+    if [ -z "${FRONTEND_IMAGE}" ]; then
+        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using fallback: ${FRONTEND_IMAGE}"
+    fi
+    
+    # Create .env file for Docker Compose with all variables
+    log_to_cloudwatch "INFO" "Creating .env file for Docker Compose..."
+    cat > .env << EOF
+BACKEND_IMAGE=${BACKEND_IMAGE}
+FRONTEND_IMAGE=${FRONTEND_IMAGE}
+SMS_API_DOMAIN=${SMS_API_DOMAIN}
+SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+OPENAI_MODEL=${OPENAI_MODEL}
+OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+FLASK_SECRET_KEY=${SECRET_KEY}
+SECRET_KEY=${SECRET_KEY}
+JWT_SECRET_KEY=${JWT_SECRET_KEY}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+AWS_REGION=${AWS_REGION}
+S3_BUCKET_NAME=${S3_BUCKET_NAME}
+SENDGRID_API_KEY=${SENDGRID_API_KEY}
+SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL}
+HOT_LEAD_EMAIL_RECIPIENTS=${HOT_LEAD_EMAIL_RECIPIENTS}
+HOT_LEAD_SMS_RECIPIENTS=${HOT_LEAD_SMS_RECIPIENTS}
+RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE}
+RATE_LIMIT_BURST=${RATE_LIMIT_BURST}
+SESSION_TIMEOUT_MINUTES=${SESSION_TIMEOUT_MINUTES}
+REMEMBER_ME_DAYS=${REMEMBER_ME_DAYS}
+MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
+ALLOWED_FILE_TYPES=${ALLOWED_FILE_TYPES}
+EOF
+    
     # Pull latest images
     log_to_cloudwatch "INFO" "Pulling latest images from ECR..."
-    sudo docker-compose pull
+    sudo -E docker-compose pull
     
     # Start services
     log_to_cloudwatch "INFO" "Starting services with Docker Compose..."
-    sudo docker-compose up -d
+    sudo -E docker-compose up -d
     
     log_to_cloudwatch "INFO" "Services started successfully"
 }

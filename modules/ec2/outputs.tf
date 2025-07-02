@@ -8,8 +8,8 @@ output "instance_id" {
 }
 
 output "instance_public_ip" {
-  description = "Public IP address of the EC2 instance"
-  value       = aws_eip.ec2_eip.public_ip
+  description = "Public IP address of the EC2 instance (via ALB)"
+  value       = aws_lb.main.dns_name
 }
 
 output "instance_private_ip" {
@@ -104,12 +104,12 @@ output "carrental_api_url" {
 
 output "config_bucket_name" {
   description = "Name of the S3 configuration bucket"
-  value       = aws_s3_bucket.config_bucket.bucket
+  value       = aws_s3_bucket.sms_seller_connect_bucket.bucket
 }
 
 output "config_bucket_arn" {
   description = "ARN of the S3 configuration bucket"
-  value       = aws_s3_bucket.config_bucket.arn
+  value       = aws_s3_bucket.sms_seller_connect_bucket.arn
 }
 
 ########################################
@@ -132,10 +132,29 @@ output "s3_bucket_name" {
 
 output "acm_certificate_arn" {
   description = "ARN of the ACM certificate"
-  value       = aws_acm_certificate_validation.main.certificate_arn
+  value       = aws_acm_certificate.main.arn
 }
 
 output "acm_certificate_domain" {
   description = "Domain name of the ACM certificate"
   value       = aws_acm_certificate.main.domain_name
+}
+
+########################################
+# Route53 Outputs
+########################################
+
+output "route53_zone_id" {
+  description = "The hosted zone ID"
+  value       = local.correct_zone_id
+}
+
+output "route53_name_servers" {
+  description = "The name servers for the hosted zone (configure these with your domain registrar)"
+  value       = data.aws_route53_zone.main.name_servers
+}
+
+output "route53_zone_name" {
+  description = "The hosted zone name"
+  value       = data.aws_route53_zone.main.name
 }

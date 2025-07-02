@@ -1,6 +1,111 @@
 # SMS Seller Connect Infrastructure
 
-This directory contains the Terraform infrastructure configuration for the SMS Seller Connect application, which runs both frontend and backend containers from ECR using Docker Compose on EC2.
+## Overview
+This infrastructure module provisions AWS resources for the SMS Seller Connect application using Terraform.
+
+## 🔧 Local Development Setup
+
+### Prerequisites
+- Terraform >= 1.5.7
+- AWS CLI configured
+- SSH key pair for EC2 access
+
+### Quick Start
+1. **Clone and navigate to the module**:
+   ```bash
+   cd Infrastructure/sms-seller-connect/modules/ec2
+   ```
+
+2. **Configure your local variables**:
+   - Use the existing `terraform.tfvars` file for local development
+   - This file is in `.gitignore` to protect secrets
+   - Update with your actual values for testing
+
+3. **Initialize and plan**:
+   ```bash
+   terraform init
+   terraform plan -var-file=terraform.tfvars
+   ```
+
+## 🚀 CI/CD Pipeline
+
+### Secrets Management
+- **Local Development**: Use `terraform.tfvars` (in `.gitignore`)
+- **CI/CD Pipeline**: Uses GitHub environment secrets via `TF_VAR_*` environment variables
+- **No secrets in version control** ✅
+
+### Deployment Workflow
+1. **Automatic Validation**: All commits trigger format, validate, and plan
+2. **Manual Approval**: Deployment requires clicking "Approve" in GitHub Actions
+3. **Environment Protection**: Uses `approve-deploy-{environment}` for approval gates
+
+### Available Actions
+- `format`: Auto-format Terraform files
+- `plan`: Create deployment plan
+- `apply`: Deploy infrastructure (requires approval)
+- `destroy`: Remove infrastructure (requires approval)
+
+## 🏗️ Architecture
+
+### Resources Created
+- **EC2 Instance**: Application server with multi-app Docker setup
+- **Application Load Balancer**: SSL termination and routing
+- **Route53**: DNS management (hosted zone created by Terraform)
+- **ACM Certificate**: SSL certificates for domains
+- **S3 Bucket**: Configuration files and scripts
+- **Security Groups**: Network access control
+- **CloudWatch**: Monitoring and alerting
+
+### Domains Configured
+- `sms.typerelations.com` - Frontend application
+- `api.sms.typerelations.com` - Backend API
+
+## 📋 Usage
+
+### Local Testing
+```bash
+# Plan changes
+terraform plan -var-file=terraform.tfvars
+
+# Apply changes
+terraform apply -var-file=terraform.tfvars
+
+# Destroy (cleanup)
+terraform destroy -var-file=terraform.tfvars
+```
+
+### CI/CD Deployment
+1. Push changes to GitHub
+2. Workflow automatically runs validation and planning
+3. Navigate to GitHub Actions
+4. Click "Approve" on the deployment job
+5. Infrastructure deploys automatically
+
+## 🔒 Security Features
+- All secrets managed via GitHub environment secrets
+- No hardcoded credentials in code
+- S3 bucket encryption enabled
+- Security groups with least privilege access
+- SSL/TLS certificates automatically managed
+
+## 📊 Outputs
+After deployment, you'll get:
+- Instance IPs and DNS names
+- Load balancer DNS
+- Route53 name servers (update with your domain registrar)
+- S3 bucket names
+- Application URLs
+
+## 🛠️ Maintenance
+- Terraform state stored in S3 with DynamoDB locking
+- CloudWatch monitoring for all resources
+- Automated backups and versioning
+- Health checks for applications
+
+## 🚨 Important Notes
+- **Route53**: After deployment, update your domain registrar with the provided name servers
+- **Secrets**: Never commit `terraform.tfvars` - it's in `.gitignore`
+- **Approval**: All deployments require manual approval for safety
 
 ## Architecture Overview
 
