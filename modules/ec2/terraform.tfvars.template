@@ -113,10 +113,10 @@ aws_region            = "us-east-1"
 aws_default_region    = "us-east-1"
 
 # API Configuration
-api_url      = "http://localhost:8900"
-vite_api_url = "http://localhost:8900"
-backend_url  = "http://localhost:8900"
-frontend_url = "http://localhost:8082"
+api_url      = "https://api.sms.typerelations.com"
+vite_api_url = "https://api.sms.typerelations.com"
+backend_url  = "https://api.sms.typerelations.com"
+frontend_url = "https://sms.typerelations.com"
 backend_port = "8900"
 frontend_port = "8082"
 

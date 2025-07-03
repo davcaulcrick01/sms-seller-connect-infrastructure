@@ -460,13 +460,13 @@ def main():
     
     # Start the server
     try:
-        with socketserver.TCPServer(("127.0.0.1", PORT), HealthCheckHandler) as httpd:
+        with socketserver.TCPServer(("0.0.0.0", PORT), HealthCheckHandler) as httpd:
             logger.info(f"🚀 ALB Health Check Server started on port {PORT}")
             logger.info(f"📋 Using health check script: {HEALTH_CHECK_SCRIPT}")
-            logger.info(f"🔗 Health check endpoint: http://127.0.0.1:{PORT}/health-check")
-            logger.info(f"📊 Server status endpoint: http://127.0.0.1:{PORT}/status")
-            logger.info(f"🔧 Detailed services endpoint: http://127.0.0.1:{PORT}/services")
-            logger.info(f"📋 Live logs endpoint: http://127.0.0.1:{PORT}/logs/[service_name]")
+            logger.info(f"🔗 Health check endpoint: http://0.0.0.0:{PORT}/health-check")
+            logger.info(f"📊 Server status endpoint: http://0.0.0.0:{PORT}/status")
+            logger.info(f"🔧 Detailed services endpoint: http://0.0.0.0:{PORT}/services")
+            logger.info(f"📋 Live logs endpoint: http://0.0.0.0:{PORT}/logs/[service_name]")
             
             httpd.serve_forever()
             
