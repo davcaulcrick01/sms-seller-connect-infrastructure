@@ -2508,12 +2508,12 @@ jobs:
         EOF
         )
         
-        # Execute the command via SSM
+        # Execute the command via SSM (Fixed - using simple S3 download approach)
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"$COMMAND\"]" \
-          --comment "SMS Seller Connect Application Redeployment" \
+          --parameters 'commands=["#!/bin/bash","set -e","echo \"🚀 Starting redeployment process...\"","echo \"📥 Downloading redeployment script from S3...\"","aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh","chmod +x /tmp/redeploy-application.sh","echo \"🔧 Executing redeployment script...\"","cd /app/sms-seller-connect || { echo \"❌ Application directory not found\"; exit 1; }","export BACKEND_IMAGE=\"${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}:${{ github.sha }}\"","export FRONTEND_IMAGE=\"${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend' }}:${{ github.sha }}\"","export SMS_API_DOMAIN=\"${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","export SMS_FRONTEND_DOMAIN=\"${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}\"","/tmp/redeploy-application.sh 2>&1 | tee /tmp/redeploy.log","REDEPLOY_EXIT_CODE=${PIPESTATUS[0]}","echo \"\"","echo \"📋 Redeployment completed with exit code: $REDEPLOY_EXIT_CODE\"","if [ $REDEPLOY_EXIT_CODE -eq 0 ]; then","  echo \"✅ Redeployment successful\"","else","  echo \"❌ Redeployment failed\"","  echo \"📜 Last 20 lines of redeploy log:\"","  tail -20 /tmp/redeploy.log || echo \"Cannot read redeploy log\"","fi","exit $REDEPLOY_EXIT_CODE"]' \
+          --comment "SMS Seller Connect Application Redeployment (Fixed JSON)" \
           --query 'Command.CommandId' \
           --output text)
         
