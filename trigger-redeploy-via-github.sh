@@ -29,7 +29,7 @@ echo "🔍 Checking if EC2 instance is running..."
 INSTANCE_ID=$(aws ec2 describe-instances \
     --region "us-east-1" \
     --filters \
-        "Name=tag:Name,Values=*sms-seller-connect*" \
+        "Name=tag:Name,Values=sms-seller-connect-prod-ec2" \
         "Name=instance-state-name,Values=running" \
     --query 'Reservations[].Instances[].InstanceId' \
     --output text)

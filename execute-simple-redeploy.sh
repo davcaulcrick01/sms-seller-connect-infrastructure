@@ -15,12 +15,12 @@ echo "Region: $REGION"
 echo "S3 Bucket: $S3_BUCKET"
 echo ""
 
-# Dynamically find the instance ID by tags
+# Dynamically find the instance ID by tags (same pattern as pipeline)
 echo "🔍 Finding SMS Seller Connect EC2 instance..."
 INSTANCE_ID=$(aws ec2 describe-instances \
     --region "$REGION" \
     --filters \
-        "Name=tag:Name,Values=*sms-seller-connect*" \
+        "Name=tag:Name,Values=sms-seller-connect-prod-ec2" \
         "Name=instance-state-name,Values=running" \
     --query 'Reservations[].Instances[].InstanceId' \
     --output text)
@@ -29,7 +29,8 @@ if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
     echo "❌ No running SMS Seller Connect instance found!"
     echo "🔍 Checking for any SMS-related instances..."
     
-    # Try broader search
+    # Try broader search for any SMS-related instances
+    echo "Available SMS Seller Connect instances:"
     aws ec2 describe-instances \
         --region "$REGION" \
         --filters "Name=tag:Project,Values=SMSSellerConnect" \
