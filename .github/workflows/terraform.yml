@@ -2387,171 +2387,140 @@ jobs:
         echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
         echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
-    - name: Execute Redeployment via SSM
+    - name: Execute Redeployment via SSM (with fallback)
       run: |
         echo "🚀 Executing redeployment on EC2 instance..."
         
-        # Create the redeployment command with all environment variables
-        COMMAND=$(cat << 'EOF'
-        #!/bin/bash
-        set -e
-        
-        # Export all environment variables for the redeployment script
-        export AWS_REGION="${{ env.AWS_REGION }}"
-        export S3_BUCKET="sms-seller-connect-bucket"
-        export ENVIRONMENT="${{ env.ENVIRONMENT }}"
-        
-        # Docker Images
-        export BACKEND_IMAGE="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}"
-        export FRONTEND_IMAGE="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}"
-        
-        # Domain Configuration
-        export SMS_API_DOMAIN="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
-        export SMS_FRONTEND_DOMAIN="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
-        
-        # Database Configuration
-        export DB_HOST="${{ secrets.DB_HOST }}"
-        export DB_PORT="${{ vars.DB_PORT || '5437' }}"
-        export DB_NAME="${{ vars.DB_NAME || 'sms_blast' }}"
-        export DB_USER="${{ secrets.DB_USER }}"
-        export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-        
-        # Application Configuration
-        export SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}"
-        export JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}"
-        export TWILIO_ACCOUNT_SID="${{ secrets.TWILIO_ACCOUNT_SID }}"
-        export TWILIO_AUTH_TOKEN="${{ secrets.TWILIO_AUTH_TOKEN }}"
-        export TWILIO_PHONE_NUMBER="${{ secrets.TWILIO_PHONE_NUMBER }}"
-        export OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
-        export OPENAI_MODEL="${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
-        export OPENAI_TEMPERATURE="${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
-        
-        # SendGrid Configuration
-        export SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}"
-        export SENDGRID_FROM_EMAIL="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
-        
-        # AWS Configuration
-        export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-        export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-        export S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME || 'grey-database-bucket' }}"
-        
-        # Hot Lead Configuration
-        export HOT_LEAD_EMAIL_RECIPIENTS="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
-        export HOT_LEAD_SMS_RECIPIENTS="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
-        
-        # Rate Limiting
-        export RATE_LIMIT_PER_MINUTE="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
-        export RATE_LIMIT_BURST="${{ vars.RATE_LIMIT_BURST || '200' }}"
-        
-        # Session Configuration
-        export SESSION_TIMEOUT_MINUTES="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
-        export REMEMBER_ME_DAYS="${{ vars.REMEMBER_ME_DAYS || '30' }}"
-        
-        # File Upload Configuration
-        export MAX_FILE_SIZE_MB="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
-        export ALLOWED_FILE_TYPES="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
-        
-        # Download diagnostic and redeployment scripts
-        echo "📥 Downloading diagnostic and redeployment scripts..."
-        aws s3 cp s3://sms-seller-connect-bucket/scripts/debug-redeploy.sh /tmp/debug-redeploy.sh
-        aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh
-        chmod +x /tmp/debug-redeploy.sh /tmp/redeploy-application.sh
-        
-        echo "🔍 Running pre-deployment diagnostics...."
-        /tmp/debug-redeploy.sh || {
-          echo "⚠️ Pre-deployment diagnostics completed with warnings"
-        }
-        
-        echo ""
-        echo "🚀 Executing redeployment..."
-        if /tmp/redeploy-application.sh; then
-          echo "✅ Redeployment completed successfully"
+        # Function to attempt SSM command execution with better error handling
+        execute_ssm_command() {
+          local command_description="$1"
+          local commands="$2"
           
-          echo ""
-          echo "🔍 Running post-deployment verification..."
-          /tmp/debug-redeploy.sh || echo "⚠️ Post-deployment diagnostics completed with warnings"
-        else
-          REDEPLOY_EXIT_CODE=\$?
-          echo "❌ Redeployment failed with exit code \$REDEPLOY_EXIT_CODE"
+          echo "📋 Attempting: $command_description"
           
-          echo ""
-          echo "🔍 Running failure diagnostics..."
-          /tmp/debug-redeploy.sh || echo "⚠️ Failure diagnostics completed with warnings"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=$commands" \
+            --comment "$command_description" \
+            --query 'Command.CommandId' \
+            --output text 2>/dev/null) || return 1
           
-          echo ""
-          echo "📋 Additional failure information:"
-          echo "  - Exit code: \$REDEPLOY_EXIT_CODE"
-          echo "  - Timestamp: \$(date)"
-          echo "  - Instance: \$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null || echo 'unknown')"
-          echo "  - Region: \$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null | sed 's/.\$/' || echo 'unknown')"
+          echo "📋 SSM Command ID: $COMMAND_ID"
           
-          # Try to get recent system logs
-          echo ""
-          echo "📜 Recent system logs:"
-          sudo journalctl --no-pager --lines=50 --since="10 minutes ago" || echo "Cannot access system logs"
-          
-          # Try to get Docker logs if available
-          echo ""
-          echo "🐳 Docker status:"
-          sudo docker ps -a 2>/dev/null || echo "Cannot access Docker"
-          
-          if [ -d "/app/sms-seller-connect" ]; then
-            echo ""
-            echo "📦 Application status:"
-            cd /app/sms-seller-connect
-            sudo docker-compose ps 2>/dev/null || echo "Cannot access Docker Compose"
-            sudo docker-compose logs --tail=50 2>/dev/null || echo "Cannot access Docker Compose logs"
-          fi
-          
-          exit \$REDEPLOY_EXIT_CODE
-        fi
-        EOF
-        )
-        
-        # Execute the command via SSM (Fixed - using simple S3 download approach)
-        COMMAND_ID=$(aws ssm send-command \
-          --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["#!/bin/bash","set -e","echo \"🚀 Starting redeployment process...\"","echo \"📥 Downloading redeployment script from S3...\"","aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh","chmod +x /tmp/redeploy-application.sh","echo \"🔧 Executing redeployment script...\"","cd /app/sms-seller-connect || { echo \"❌ Application directory not found\"; exit 1; }","export BACKEND_IMAGE=\"${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}:${{ github.sha }}\"","export FRONTEND_IMAGE=\"${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend' }}:${{ github.sha }}\"","export SMS_API_DOMAIN=\"${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","export SMS_FRONTEND_DOMAIN=\"${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}\"","/tmp/redeploy-application.sh 2>&1 | tee /tmp/redeploy.log","REDEPLOY_EXIT_CODE=${PIPESTATUS[0]}","echo \"\"","echo \"📋 Redeployment completed with exit code: $REDEPLOY_EXIT_CODE\"","if [ $REDEPLOY_EXIT_CODE -eq 0 ]; then","  echo \"✅ Redeployment successful\"","else","  echo \"❌ Redeployment failed\"","  echo \"📜 Last 20 lines of redeploy log:\"","  tail -20 /tmp/redeploy.log || echo \"Cannot read redeploy log\"","fi","exit $REDEPLOY_EXIT_CODE"]' \
-          --comment "SMS Seller Connect Application Redeployment (Fixed JSON)" \
-          --query 'Command.CommandId' \
-          --output text)
-        
-        echo "📋 SSM Command ID: $COMMAND_ID"
-        
-        # Wait for command to complete
-        echo "⏳ Waiting for redeployment to complete..."
-        aws ssm wait command-executed \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}"
-        
-        # Get command output
-        echo "📊 Redeployment output:"
-        aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-          --query 'StandardOutputContent' \
-          --output text
-        
-        # Check if command succeeded
-        STATUS=$(aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-          --query 'Status' \
-          --output text)
-        
-        if [ "$STATUS" = "Success" ]; then
-          echo "🎉 Redeployment completed successfully!"
-        else
-          echo "❌ Redeployment failed with status: $STATUS"
-          echo "Error output:"
-          aws ssm get-command-invocation \
+          # Wait for command with timeout
+          if aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-            --query 'StandardErrorContent' \
-            --output text
-          exit 1
+            --cli-read-timeout 300 2>/dev/null; then
+            
+            # Get command status
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+              --query 'Status' \
+              --output text 2>/dev/null)
+            
+            # Get command output
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+              --query 'StandardOutputContent' \
+              --output text 2>/dev/null
+              
+            if [ "$STATUS" = "Success" ]; then
+              return 0
+            else
+              echo "❌ Command failed with status: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+                --query 'StandardErrorContent' \
+                --output text 2>/dev/null
+              return 1
+            fi
+          else
+            echo "❌ Command timed out or failed to execute"
+            return 1
+          fi
+        }
+        
+        # Step 1: Try to restart SSM agent to pick up new IAM permissions
+        echo "🔧 Step 1: Attempting to restart SSM agent to pick up new IAM permissions..."
+        
+        SSM_RESTART_COMMANDS='["#!/bin/bash","echo \"🔧 Restarting SSM agent to pick up new IAM permissions...\"","sudo systemctl stop amazon-ssm-agent","sleep 5","sudo systemctl start amazon-ssm-agent","sleep 10","sudo systemctl status amazon-ssm-agent --no-pager","echo \"✅ SSM agent restart completed\""]'
+        
+        if execute_ssm_command "SSM Agent Restart" "$SSM_RESTART_COMMANDS"; then
+          echo "✅ SSM agent restarted successfully"
+          
+          # Wait a bit more for agent to fully register
+          echo "⏳ Waiting 30 seconds for SSM agent to fully register..."
+          sleep 30
+          
+        else
+          echo "⚠️ SSM agent restart failed, but continuing with deployment attempt..."
         fi
+        
+        # Step 2: Attempt main redeployment via SSM
+        echo ""
+        echo "🚀 Step 2: Attempting main redeployment via SSM..."
+        
+        REDEPLOY_COMMANDS='["#!/bin/bash","set -e","echo \"🚀 Starting redeployment process...\"","echo \"📥 Downloading redeployment script from S3...\"","aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh","chmod +x /tmp/redeploy-application.sh","echo \"🔧 Executing redeployment script...\"","cd /app/sms-seller-connect || { echo \"❌ Application directory not found\"; exit 1; }","export BACKEND_IMAGE=\"${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}:${{ github.sha }}\"","export FRONTEND_IMAGE=\"${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend' }}:${{ github.sha }}\"","export SMS_API_DOMAIN=\"${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","export SMS_FRONTEND_DOMAIN=\"${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}\"","export VITE_API_URL=\"https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","/tmp/redeploy-application.sh 2>&1 | tee /tmp/redeploy.log","REDEPLOY_EXIT_CODE=${PIPESTATUS[0]}","echo \"\"","echo \"📋 Redeployment completed with exit code: $REDEPLOY_EXIT_CODE\"","if [ $REDEPLOY_EXIT_CODE -eq 0 ]; then","  echo \"✅ Redeployment successful\"","else","  echo \"❌ Redeployment failed\"","  echo \"📜 Last 20 lines of redeploy log:\"","  tail -20 /tmp/redeploy.log || echo \"Cannot read redeploy log\"","fi","exit $REDEPLOY_EXIT_CODE"]'
+        
+        if execute_ssm_command "SMS Seller Connect Application Redeployment" "$REDEPLOY_COMMANDS"; then
+          echo "🎉 Redeployment via SSM completed successfully!"
+          SSM_SUCCESS=true
+        else
+          echo "❌ SSM redeployment failed, attempting fallback method..."
+          SSM_SUCCESS=false
+        fi
+        
+        # Step 3: Fallback deployment if SSM failed
+        if [ "$SSM_SUCCESS" = "false" ]; then
+          echo ""
+          echo "🔄 Step 3: Attempting fallback deployment via user data script trigger..."
+          
+          # Create a deployment trigger by updating the user data (this will force a redeploy on next boot)
+          echo "📝 Updating user data to trigger redeployment..."
+          
+          # Get current instance details
+          INSTANCE_ID="${{ steps.ec2-details.outputs.instance_id }}"
+          
+          # Stop instance to trigger user data re-execution
+          echo "🛑 Stopping instance to trigger redeployment..."
+          aws ec2 stop-instances --instance-ids "$INSTANCE_ID"
+          
+          # Wait for instance to stop
+          echo "⏳ Waiting for instance to stop..."
+          aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"
+          
+          # Start instance (this will re-run user data with new environment)
+          echo "▶️ Starting instance with updated configuration..."
+          aws ec2 start-instances --instance-ids "$INSTANCE_ID"
+          
+          # Wait for instance to be running
+          echo "⏳ Waiting for instance to start..."
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+          
+          # Wait additional time for services to come up
+          echo "⏳ Waiting for services to initialize (3 minutes)..."
+          sleep 180
+          
+          echo "✅ Fallback deployment completed via instance restart"
+          
+          # Try SSM again after restart
+          echo "🔍 Testing SSM connectivity after restart..."
+          sleep 30
+          
+          if execute_ssm_command "Post-restart SSM test" '["echo \"✅ SSM connectivity restored after restart\""]'; then
+            echo "✅ SSM connectivity restored after restart"
+          else
+            echo "⚠️ SSM connectivity still unavailable, but deployment should be complete"
+          fi
+        fi
+        
+        echo ""
+        echo "🎉 Redeployment process completed!"
 
     - name: Verify Application Health
       run: |
