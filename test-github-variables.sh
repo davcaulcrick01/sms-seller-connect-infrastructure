@@ -64,8 +64,8 @@ check_value "SENDGRID_API_KEY" "$SENDGRID_API_KEY" "true"
 
 echo ""
 echo "🖥️ **Infrastructure Variables:**"
-check_value "BACKEND_IMAGE" "$BACKEND_IMAGE" "false" "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
-check_value "FRONTEND_IMAGE" "$FRONTEND_IMAGE" "false" "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+check_value "BACKEND_IMAGE" "$BACKEND_IMAGE" "false" "Should use commit SHA or latest ECR tag, not :latest"
+check_value "FRONTEND_IMAGE" "$FRONTEND_IMAGE" "false" "Should use commit SHA or latest ECR tag, not :latest"
 check_value "SMS_API_DOMAIN" "$SMS_API_DOMAIN" "false" "api.sms.typerelations.com"
 check_value "SMS_FRONTEND_DOMAIN" "$SMS_FRONTEND_DOMAIN" "false" "sms.typerelations.com"
 

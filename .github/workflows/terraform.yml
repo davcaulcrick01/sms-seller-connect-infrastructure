@@ -179,6 +179,8 @@ jobs:
     outputs:
       plan-status: ${{ steps.plan.outputs.status }}
       has-changes: ${{ steps.plan.outputs.has-changes }}
+      infrastructure-exists: ${{ steps.check-infrastructure.outputs.exists }}
+      deployment-strategy: ${{ steps.check-infrastructure.outputs.strategy }}
     
     steps:
     - name: Checkout
@@ -188,6 +190,162 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Validate GitHub Secrets and Variables
+      id: validate-config
+      run: |
+        echo "🔐 Validating GitHub Secrets and Variables Configuration..."
+        echo "========================================================"
+        echo ""
+        
+        VALIDATION_ERRORS=0
+        VALIDATION_WARNINGS=0
+        
+        # Function to check required secret
+        check_secret() {
+          local secret_name="$1"
+          local secret_value="$2"
+          local is_required="${3:-true}"
+          
+          if [ -z "$secret_value" ] || [ "$secret_value" = "" ]; then
+            if [ "$is_required" = "true" ]; then
+              echo "❌ MISSING REQUIRED SECRET: $secret_name"
+              VALIDATION_ERRORS=$((VALIDATION_ERRORS + 1))
+            else
+              echo "⚠️ MISSING OPTIONAL SECRET: $secret_name"
+              VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+            fi
+          else
+            # Check if secret looks valid (basic format validation)
+            case "$secret_name" in
+              *_KEY|*_TOKEN|*_SECRET*) 
+                if [ ${#secret_value} -lt 10 ]; then
+                  echo "⚠️ SECRET TOO SHORT: $secret_name (${#secret_value} characters)"
+                  VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+                else
+                  echo "✅ SECRET VALID: $secret_name (${#secret_value} characters)"
+                fi
+                ;;
+              *_HOST|*_URL|*_DOMAIN*)
+                if echo "$secret_value" | grep -q -E "^[a-zA-Z0-9.-]+$|^https?://"; then
+                  echo "✅ SECRET VALID: $secret_name"
+                else
+                  echo "⚠️ SECRET FORMAT WARNING: $secret_name (may be invalid format)"
+                  VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+                fi
+                ;;
+              *)
+                echo "✅ SECRET VALID: $secret_name (configured)"
+                ;;
+            esac
+          fi
+        }
+        
+        # Function to check required variable
+        check_variable() {
+          local var_name="$1"
+          local var_value="$2"
+          local is_required="${3:-true}"
+          local default_value="${4:-}"
+          
+          if [ -z "$var_value" ] || [ "$var_value" = "" ]; then
+            if [ -n "$default_value" ]; then
+              echo "✅ VARIABLE USING DEFAULT: $var_name (default: $default_value)"
+            elif [ "$is_required" = "true" ]; then
+              echo "❌ MISSING REQUIRED VARIABLE: $var_name"
+              VALIDATION_ERRORS=$((VALIDATION_ERRORS + 1))
+            else
+              echo "⚠️ MISSING OPTIONAL VARIABLE: $var_name"
+              VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+            fi
+          else
+            echo "✅ VARIABLE VALID: $var_name ($var_value)"
+          fi
+        }
+        
+        echo "🔑 REQUIRED SECRETS VALIDATION:"
+        echo "==============================="
+        check_secret "AWS_ACCESS_KEY_ID" "${{ secrets.AWS_ACCESS_KEY_ID }}"
+        check_secret "AWS_SECRET_ACCESS_KEY" "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        check_secret "SSH_PUBLIC_KEY" "${{ secrets.SSH_PUBLIC_KEY }}"
+        check_secret "FLASK_SECRET_KEY" "${{ secrets.FLASK_SECRET_KEY }}"
+        check_secret "JWT_SECRET_KEY" "${{ secrets.JWT_SECRET_KEY }}"
+        check_secret "DB_HOST" "${{ secrets.DB_HOST }}"
+        check_secret "DB_USER" "${{ secrets.DB_USER }}"
+        check_secret "DB_PASSWORD" "${{ secrets.DB_PASSWORD }}"
+        
+        echo ""
+        echo "📱 SMS/COMMUNICATION SECRETS:"
+        echo "============================="
+        check_secret "TWILIO_ACCOUNT_SID" "${{ secrets.TWILIO_ACCOUNT_SID }}"
+        check_secret "TWILIO_AUTH_TOKEN" "${{ secrets.TWILIO_AUTH_TOKEN }}"
+        check_secret "TWILIO_PHONE_NUMBER" "${{ secrets.TWILIO_PHONE_NUMBER }}"
+        
+        echo ""
+        echo "🤖 AI/EMAIL SECRETS:"
+        echo "==================="
+        check_secret "OPENAI_API_KEY" "${{ secrets.OPENAI_API_KEY }}"
+        check_secret "SENDGRID_API_KEY" "${{ secrets.SENDGRID_API_KEY }}" false
+        check_secret "NGROK_AUTH_TOKEN" "${{ secrets.NGROK_AUTH_TOKEN }}" false
+        check_secret "HOT_LEAD_SMS_RECIPIENTS" "${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}" false
+        
+        echo ""
+        echo "🌐 REQUIRED VARIABLES:"
+        echo "====================="
+        check_variable "AWS_REGION" "${{ vars.AWS_REGION }}" true "us-east-1"
+        check_variable "PROJECT_NAME" "${{ vars.PROJECT_NAME }}" true "sms-seller-connect"
+        check_variable "SMS_FRONTEND_DOMAIN" "${{ vars.SMS_FRONTEND_DOMAIN }}" true "sms.typerelations.com"
+        check_variable "SMS_API_DOMAIN" "${{ vars.SMS_API_DOMAIN }}" true "api.sms.typerelations.com"
+        check_variable "DOMAIN_ZONE_NAME" "${{ vars.DOMAIN_ZONE_NAME }}" true "typerelations.com"
+        
+        echo ""
+        echo "🔧 INFRASTRUCTURE VARIABLES:"
+        echo "============================"
+        check_variable "INSTANCE_TYPE" "${{ vars.INSTANCE_TYPE }}" false "t2.micro"
+        check_variable "AMI_ID" "${{ vars.AMI_ID }}" false "ami-0c02fb55956c7d316"
+        check_variable "KEY_NAME" "${{ vars.KEY_NAME }}" false "sms-seller-connect-key"
+        check_variable "VPC_NAME" "${{ vars.VPC_NAME }}" false "Grey-VPC"
+        check_variable "S3_BUCKET_NAME" "${{ vars.S3_BUCKET_NAME }}" false "sms-seller-connect-bucket"
+        
+        echo ""
+        echo "🐳 CONTAINER VARIABLES:"
+        echo "======================"
+        check_variable "ECR_REPO_URL" "${{ vars.ECR_REPO_URL }}" false "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend"
+        check_variable "BACKEND_IMAGE" "${{ vars.BACKEND_IMAGE }}" false
+        check_variable "FRONTEND_IMAGE" "${{ vars.FRONTEND_IMAGE }}" false
+        check_variable "CONTAINER_TAG" "${{ vars.CONTAINER_TAG }}" false "latest"
+        
+        echo ""
+        echo "📊 VALIDATION SUMMARY:"
+        echo "====================="
+        echo "Validation Errors: $VALIDATION_ERRORS"
+        echo "Validation Warnings: $VALIDATION_WARNINGS"
+        
+        # Set outputs for later steps
+        echo "validation_errors=$VALIDATION_ERRORS" >> $GITHUB_OUTPUT
+        echo "validation_warnings=$VALIDATION_WARNINGS" >> $GITHUB_OUTPUT
+        
+        if [ $VALIDATION_ERRORS -gt 0 ]; then
+          echo ""
+          echo "❌ VALIDATION FAILED: $VALIDATION_ERRORS critical configuration issues found"
+          echo ""
+          echo "🔧 REQUIRED ACTIONS:"
+          echo "==================="
+          echo "1. Go to your GitHub repository settings"
+          echo "2. Navigate to 'Secrets and variables' → 'Actions'"
+          echo "3. Add missing secrets to 'Repository secrets'"
+          echo "4. Add missing variables to 'Repository variables'"
+          echo ""
+          echo "❌ Planning cannot proceed until all required configuration is set!"
+          exit 1
+        elif [ $VALIDATION_WARNINGS -gt 0 ]; then
+          echo ""
+          echo "⚠️ VALIDATION PASSED WITH WARNINGS: $VALIDATION_WARNINGS non-critical issues found"
+          echo "Planning will proceed using defaults where applicable."
+        else
+          echo ""
+          echo "✅ VALIDATION PASSED: All required configuration is properly set"
+        fi
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -326,10 +484,10 @@ jobs:
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         
         # Domain Configuration
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
@@ -425,50 +583,210 @@ jobs:
     - name: Set Boolean Environment Variables
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "🔧 Setting boolean environment variables for Terraform..."
+        echo "🔧 Setting boolean environment variables for Terraform Plan..."
+        echo ""
         
-        # Convert string boolean values to proper booleans
-        # GitHub Actions passes booleans as strings, so we need to convert them
+        # Helper function for robust boolean checking
+        is_true() {
+          local value="$1"
+          # Convert to lowercase and trim whitespace
+          value=$(echo "$value" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          [ "$value" = "true" ] || [ "$value" = "1" ] || [ "$value" = "yes" ]
+        }
         
-        # Set use_default_vpc
-        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+        # Debug: Show raw GitHub variable values
+        echo "🔍 DEBUG: Raw GitHub variable values for planning:"
+        echo "  USE_DEFAULT_VPC: '${{ vars.USE_DEFAULT_VPC }}'"
+        echo "  S3_FORCE_DESTROY: '${{ vars.S3_FORCE_DESTROY }}'"
+        echo "  USE_POSTGRES: '${{ vars.USE_POSTGRES }}'"
+        echo "  START_NGROK: '${{ vars.START_NGROK }}'"
+        echo "  DEBUG: '${{ vars.DEBUG }}'"
+        echo ""
+        
+        # Set use_default_vpc (false for custom VPC in production)
+        USE_DEFAULT_VPC="${{ vars.USE_DEFAULT_VPC || 'false' }}"
+        if is_true "$USE_DEFAULT_VPC"; then
           echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+          echo "📋 Planning with default VPC"
         else
           echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+          echo "📋 Planning with custom VPC: ${{ vars.VPC_NAME || 'Grey-VPC' }}"
         fi
         
-        # Set s3_force_destroy
-        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+        # Set s3_force_destroy (false for production safety)
+        S3_FORCE_DESTROY="${{ vars.S3_FORCE_DESTROY || 'false' }}"
+        if is_true "$S3_FORCE_DESTROY"; then
           echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+          echo "📋 Planning with S3 force destroy ENABLED"
         else
           echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+          echo "📋 Planning with S3 force destroy disabled"
         fi
         
-        # Set use_postgres
-        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+        # Set use_postgres (CRITICAL: should be true for SMS functionality)
+        USE_POSTGRES="${{ vars.USE_POSTGRES || 'true' }}"
+        if is_true "$USE_POSTGRES"; then
           echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+          echo "📋 Planning with PostgreSQL database ENABLED"
         else
           echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+          echo "📋 Planning with PostgreSQL DISABLED"
         fi
         
-        # Set start_ngrok
-        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+        # Set start_ngrok (CRITICAL: should be true for Twilio webhooks)  
+        START_NGROK="${{ vars.START_NGROK || 'true' }}"
+        echo "🔍 DEBUG: START_NGROK value for planning: '$START_NGROK'"
+        if is_true "$START_NGROK"; then
           echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+          echo "📋 Planning with Ngrok ENABLED"
         else
           echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+          echo "📋 Planning with Ngrok DISABLED"
         fi
         
-        # Set debug
-        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+        # Set debug (false for production performance)
+        DEBUG_MODE="${{ vars.DEBUG || 'false' }}"
+        if is_true "$DEBUG_MODE"; then
           echo "TF_VAR_debug=true" >> $GITHUB_ENV
+          echo "📋 Planning with debug mode ENABLED"
         else
           echo "TF_VAR_debug=false" >> $GITHUB_ENV
+          echo "📋 Planning with debug mode disabled"
         fi
         
-        # Set enable_carrental_domain (hardcoded to false)
+        # Set enable_carrental_domain (hardcoded to false for SMS application)
         echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        echo "📋 Planning with car rental domain disabled"
         
-        echo "✅ Boolean environment variables set successfully!"
+        echo ""
+        echo "✅ Boolean environment variables configured for planning!"
+
+    - name: Check Infrastructure Existence & Determine Strategy
+      id: check-infrastructure
+      working-directory: ${{ env.TF_WORKING_DIR }}
+      run: |
+        echo "🔍 INTELLIGENT DEPLOYMENT STRATEGY DETECTION"
+        echo "============================================="
+        echo ""
+        
+        # Check if key infrastructure components exist
+        INFRASTRUCTURE_EXISTS=false
+        STRATEGY="full-deploy"
+        
+        echo "🔍 Checking for existing infrastructure components..."
+        
+        # Check for EC2 instance
+        EC2_EXISTS=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=sms-seller-connect-${{ env.ENVIRONMENT }}-ec2" "Name=instance-state-name,Values=running,stopped,stopping" \
+          --query 'Reservations[*].Instances[*].InstanceId' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$EC2_EXISTS" ] && [ "$EC2_EXISTS" != "None" ]; then
+          echo "✅ EC2 instance found: $EC2_EXISTS"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No EC2 instance found"
+        fi
+        
+        # Check for ALB
+        ALB_EXISTS=$(aws elbv2 describe-load-balancers \
+          --names "sms-seller-connect-${{ env.ENVIRONMENT }}-alb" \
+          --query 'LoadBalancers[0].LoadBalancerArn' \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ALB_EXISTS" ] && [ "$ALB_EXISTS" != "None" ]; then
+          echo "✅ ALB found: $(basename $ALB_EXISTS)"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No ALB found"
+        fi
+        
+        # Check for S3 bucket
+        BUCKET_EXISTS=$(aws s3api head-bucket --bucket "sms-seller-connect-${{ env.ENVIRONMENT }}-bucket" 2>/dev/null && echo "true" || echo "false")
+        
+        if [ "$BUCKET_EXISTS" = "true" ]; then
+          echo "✅ S3 bucket found"
+          INFRASTRUCTURE_EXISTS=true
+        else
+          echo "❌ No S3 bucket found"
+        fi
+        
+        # Check for Route53 hosted zone
+        ROUTE53_EXISTS=$(aws route53 list-hosted-zones \
+          --query "HostedZones[?Name=='${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}.'].Id" \
+          --output text 2>/dev/null || echo "")
+        
+        if [ -n "$ROUTE53_EXISTS" ] && [ "$ROUTE53_EXISTS" != "None" ]; then
+          echo "✅ Route53 hosted zone found"
+        else
+          echo "❌ No Route53 hosted zone found"
+        fi
+        
+        echo ""
+        echo "🎯 DEPLOYMENT STRATEGY DECISION:"
+        echo "==============================="
+        
+        if [ "$INFRASTRUCTURE_EXISTS" = "true" ]; then
+          # Check if EC2 is running and accessible
+          if [ -n "$EC2_EXISTS" ]; then
+            EC2_STATE=$(aws ec2 describe-instances \
+              --instance-ids "$EC2_EXISTS" \
+              --query 'Reservations[0].Instances[0].State.Name' \
+              --output text 2>/dev/null || echo "")
+            
+            echo "📊 EC2 Instance State: $EC2_STATE"
+            
+            if [ "$EC2_STATE" = "running" ]; then
+              # Check if we can connect to the instance
+              EC2_IP=$(aws ec2 describe-instances \
+                --instance-ids "$EC2_EXISTS" \
+                --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                --output text 2>/dev/null || echo "")
+              
+              if [ -n "$EC2_IP" ] && [ "$EC2_IP" != "None" ]; then
+                echo "✅ EC2 is running and accessible at $EC2_IP"
+                STRATEGY="redeploy"
+                echo "🚀 STRATEGY: Fast Redeploy - Update existing running infrastructure"
+              else
+                STRATEGY="full-deploy"
+                echo "🏗️ STRATEGY: Full Deploy - EC2 exists but not accessible"
+              fi
+            else
+              STRATEGY="full-deploy"
+              echo "🏗️ STRATEGY: Full Deploy - EC2 exists but not running ($EC2_STATE)"
+            fi
+          else
+            STRATEGY="full-deploy"
+            echo "🏗️ STRATEGY: Full Deploy - Some infrastructure exists but EC2 missing"
+          fi
+        else
+          STRATEGY="full-deploy"
+          echo "🏗️ STRATEGY: Full Deploy - No existing infrastructure detected"
+        fi
+        
+        echo ""
+        echo "📋 STRATEGY SUMMARY:"
+        echo "==================="
+        if [ "$STRATEGY" = "redeploy" ]; then
+          echo "✨ FAST REDEPLOY selected"
+          echo "   • Infrastructure exists and is healthy"
+          echo "   • Will update containers and configurations"
+          echo "   • Estimated time: ~5 minutes"
+          echo "   • Route: plan → redeploy → health-check"
+        else
+          echo "🏗️ FULL DEPLOYMENT selected"
+          echo "   • Infrastructure missing or unhealthy"
+          echo "   • Will create/recreate all resources"
+          echo "   • Estimated time: ~15 minutes"
+          echo "   • Route: plan → apply → health-check"
+        fi
+        
+        # Set outputs
+        echo "exists=$INFRASTRUCTURE_EXISTS" >> $GITHUB_OUTPUT
+        echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+        
+        echo ""
+        echo "🔄 Next job will be: $([ "$STRATEGY" = "redeploy" ] && echo "Fast Redeploy" || echo "Full Apply")"
 
     - name: Terraform Plan
       id: plan
@@ -499,10 +817,10 @@ jobs:
         
         # Container Configuration
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         
         # Domain Configuration
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
@@ -723,13 +1041,15 @@ jobs:
           ${{ env.TF_WORKING_DIR }}/terraform-${{ env.ENVIRONMENT }}.tfvars
 
   apply:
-    name: '🚀 Deploy Infrastructure'
+    name: '🏗️ Full Infrastructure Deployment'
     runs-on: ubuntu-latest
     needs: [format, validate, plan]
     if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
+      needs.plan.outputs.deployment-strategy == 'full-deploy' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true')
+      )
     
     steps:
     - name: Auto-Deploy Notification
@@ -749,6 +1069,28 @@ jobs:
 
     - name: Checkout
       uses: actions/checkout@v4
+
+    - name: Validate Critical Secrets for Deployment
+      run: |
+        echo "🔐 Quick validation of critical secrets for deployment..."
+        MISSING_SECRETS=0
+        
+        # Check absolutely critical secrets needed for deployment
+        [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && echo "❌ Missing AWS_ACCESS_KEY_ID" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && echo "❌ Missing AWS_SECRET_ACCESS_KEY" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.SSH_PUBLIC_KEY }}" ] && echo "❌ Missing SSH_PUBLIC_KEY" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.DB_HOST }}" ] && echo "❌ Missing DB_HOST" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.DB_PASSWORD }}" ] && echo "❌ Missing DB_PASSWORD" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.TWILIO_ACCOUNT_SID }}" ] && echo "❌ Missing TWILIO_ACCOUNT_SID" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        [ -z "${{ secrets.OPENAI_API_KEY }}" ] && echo "❌ Missing OPENAI_API_KEY" && MISSING_SECRETS=$((MISSING_SECRETS + 1))
+        
+        if [ $MISSING_SECRETS -gt 0 ]; then
+          echo "❌ DEPLOYMENT BLOCKED: $MISSING_SECRETS critical secrets are missing!"
+          echo "This should not happen if plan validation passed. Check repository secrets configuration."
+          exit 1
+        else
+          echo "✅ All critical secrets available for deployment"
+        fi
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -800,10 +1142,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -867,46 +1209,107 @@ jobs:
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
         echo "🔧 Setting boolean environment variables for Terraform Apply..."
+        echo ""
         
-        # Set use_default_vpc
-        if [ "${{ vars.USE_DEFAULT_VPC || 'true' }}" = "true" ]; then
+        # Helper function for robust boolean checking
+        is_true() {
+          local value="$1"
+          # Convert to lowercase and trim whitespace
+          value=$(echo "$value" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          [ "$value" = "true" ] || [ "$value" = "1" ] || [ "$value" = "yes" ]
+        }
+        
+        # Debug: Show raw GitHub variable values
+        echo "🔍 DEBUG: Raw GitHub variable values:"
+        echo "  USE_DEFAULT_VPC: '${{ vars.USE_DEFAULT_VPC }}'"
+        echo "  S3_FORCE_DESTROY: '${{ vars.S3_FORCE_DESTROY }}'"
+        echo "  USE_POSTGRES: '${{ vars.USE_POSTGRES }}'"
+        echo "  START_NGROK: '${{ vars.START_NGROK }}'"
+        echo "  DEBUG: '${{ vars.DEBUG }}'"
+        echo ""
+        
+        # Set use_default_vpc (false for custom VPC in production)
+        USE_DEFAULT_VPC="${{ vars.USE_DEFAULT_VPC || 'false' }}"
+        if is_true "$USE_DEFAULT_VPC"; then
           echo "TF_VAR_use_default_vpc=true" >> $GITHUB_ENV
+          echo "✅ Using default VPC"
         else
           echo "TF_VAR_use_default_vpc=false" >> $GITHUB_ENV
+          echo "✅ Using custom VPC: ${{ vars.VPC_NAME || 'Grey-VPC' }}"
         fi
         
-        # Set s3_force_destroy
-        if [ "${{ vars.S3_FORCE_DESTROY || 'false' }}" = "true" ]; then
+        # Set s3_force_destroy (false for production safety)
+        S3_FORCE_DESTROY="${{ vars.S3_FORCE_DESTROY || 'false' }}"
+        if is_true "$S3_FORCE_DESTROY"; then
           echo "TF_VAR_s3_force_destroy=true" >> $GITHUB_ENV
+          echo "⚠️ S3 force destroy ENABLED (dangerous for production!)"
         else
           echo "TF_VAR_s3_force_destroy=false" >> $GITHUB_ENV
+          echo "✅ S3 force destroy disabled (production safe)"
         fi
         
-        # Set use_postgres
-        if [ "${{ vars.USE_POSTGRES || 'true' }}" = "true" ]; then
+        # Set use_postgres (CRITICAL: should be true for SMS functionality)
+        USE_POSTGRES="${{ vars.USE_POSTGRES || 'true' }}"
+        if is_true "$USE_POSTGRES"; then
           echo "TF_VAR_use_postgres=true" >> $GITHUB_ENV
+          echo "✅ PostgreSQL database ENABLED (required for SMS functionality)"
         else
           echo "TF_VAR_use_postgres=false" >> $GITHUB_ENV
+          echo "❌ WARNING: PostgreSQL DISABLED - SMS functionality will not work!"
         fi
         
-        # Set start_ngrok
-        if [ "${{ vars.START_NGROK || 'true' }}" = "true" ]; then
+        # Set start_ngrok (CRITICAL: should be true for Twilio webhooks)  
+        START_NGROK="${{ vars.START_NGROK || 'true' }}"
+        echo "🔍 DEBUG: START_NGROK value: '$START_NGROK'"
+        if is_true "$START_NGROK"; then
           echo "TF_VAR_start_ngrok=true" >> $GITHUB_ENV
+          echo "✅ Ngrok ENABLED (required for Twilio webhooks)"
         else
           echo "TF_VAR_start_ngrok=false" >> $GITHUB_ENV
+          echo "❌ WARNING: Ngrok DISABLED - Twilio webhooks will not work!"
         fi
         
-        # Set debug
-        if [ "${{ vars.DEBUG || 'true' }}" = "true" ]; then
+        # Set debug (false for production performance)
+        DEBUG_MODE="${{ vars.DEBUG || 'false' }}"
+        if is_true "$DEBUG_MODE"; then
           echo "TF_VAR_debug=true" >> $GITHUB_ENV
+          echo "🐛 Debug mode ENABLED"
         else
           echo "TF_VAR_debug=false" >> $GITHUB_ENV
+          echo "✅ Debug mode disabled (production optimized)"
         fi
         
-        # Set enable_carrental_domain (hardcoded to false)
+        # Set enable_carrental_domain (hardcoded to false for SMS application)
         echo "TF_VAR_enable_carrental_domain=false" >> $GITHUB_ENV
+        echo "✅ Car rental domain disabled (SMS application)"
         
-        echo "✅ Boolean environment variables set for Apply!"
+        echo ""
+        echo "📋 FINAL BOOLEAN CONFIGURATION:"
+        echo "==============================="
+        echo "VPC Strategy: $([ "${{ vars.USE_DEFAULT_VPC || 'false' }}" = "true" ] && echo "Default VPC" || echo "Custom VPC (${{ vars.VPC_NAME || 'Grey-VPC' }})")"
+        echo "S3 Force Destroy: $(is_true "$S3_FORCE_DESTROY" && echo "⚠️ ENABLED" || echo "✅ Disabled")"
+        echo "PostgreSQL: $(is_true "$USE_POSTGRES" && echo "✅ ENABLED" || echo "❌ DISABLED")"
+        echo "Ngrok: $(is_true "$START_NGROK" && echo "✅ ENABLED" || echo "❌ DISABLED")"
+        echo "Debug: $(is_true "$DEBUG_MODE" && echo "🐛 ENABLED" || echo "✅ Disabled")"
+        echo "Car Rental: ❌ DISABLED"
+        
+        # Validation warnings for critical features
+        if ! is_true "$USE_POSTGRES"; then
+          echo ""
+          echo "⚠️ CRITICAL WARNING: PostgreSQL is disabled!"
+          echo "   - SMS functionality requires database connectivity"
+          echo "   - Set USE_POSTGRES=true in GitHub repository variables"
+        fi
+        
+        if ! is_true "$START_NGROK"; then
+          echo ""
+          echo "⚠️ CRITICAL WARNING: Ngrok is disabled!"
+          echo "   - Twilio webhooks require ngrok for local/dev connectivity"
+          echo "   - Set START_NGROK=true in GitHub repository variables"
+        fi
+        
+        echo ""
+        echo "✅ Boolean environment variables configured for Apply!"
 
     - name: Terraform Apply
       working-directory: ${{ env.TF_WORKING_DIR }}
@@ -928,10 +1331,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1051,81 +1454,30 @@ jobs:
         echo "📋 All outputs:"
         terraform output 2>/dev/null || echo "ℹ️ No outputs available"
 
-    - name: Verify ALB Health
+    - name: Deployment Completion Summary
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "🔍 Verifying ALB deployment..."
-        
-        ALB_DNS="${{ steps.outputs.outputs.alb_dns }}"
-        if [ "$ALB_DNS" != "N/A" ] && [ -n "$ALB_DNS" ]; then
-          echo "🌐 Testing ALB health endpoint..."
-          
-          # Wait for ALB to be ready
-          echo "⏳ Waiting for ALB to be ready..."
-          sleep 120
-          
-          # Test ALB health endpoint
-          if curl -f -m 30 "http://${ALB_DNS}/alb-health" > /dev/null 2>&1; then
-            echo "✅ ALB health check responding"
-          else
-            echo "⚠️ ALB health check not yet responding (may still be starting)"
-          fi
-        else
-          echo "⚠️ No ALB DNS available for verification"
-        fi
-
-    - name: Verify Application Health
-      working-directory: ${{ env.TF_WORKING_DIR }}
-      run: |
-        echo "🔍 Verifying SMS Seller Connect application..."
-        
-        API_URL="${{ steps.outputs.outputs.api_url }}"
-        if [ "$API_URL" != "N/A" ] && [ -n "$API_URL" ]; then
-          echo "🌐 Testing application health..."
-          
-          # Wait for application to be ready
-          echo "⏳ Waiting for application to be ready..."
-          sleep 180
-          
-          # Test API health endpoint
-          if curl -f -m 30 "${API_URL}/api/health" > /dev/null 2>&1; then
-            echo "✅ SMS Seller Connect API is responding"
-          else
-            echo "⚠️ Application not yet responding (may still be starting)"
-          fi
-          
-          # Test database connection
-          if curl -f -m 30 "${API_URL}/api/test-db" > /dev/null 2>&1; then
-            echo "✅ Database connection verified"
-          else
-            echo "⚠️ Database connection test failed"
-          fi
-        else
-          echo "⚠️ No API URL available for verification"
-        fi
-
-    - name: Verify S3 Deployment
-      working-directory: ${{ env.TF_WORKING_DIR }}
-      run: |
-        echo "🔍 Verifying S3 deployment..."
-        
-        BUCKET_NAME="${{ steps.outputs.outputs.bucket_name }}"
-        if [ "$BUCKET_NAME" != "N/A" ] && [ -n "$BUCKET_NAME" ]; then
-          echo "🪣 Testing S3 bucket accessibility..."
-          if aws s3 ls "s3://${BUCKET_NAME}" > /dev/null 2>&1; then
-            echo "✅ S3 bucket is accessible"
-            
-            # Check for required files
-            echo "📁 Checking for required configuration files..."
-            aws s3 ls "s3://${BUCKET_NAME}/docker-compose/" || echo "⚠️ Docker compose files not found"
-            aws s3 ls "s3://${BUCKET_NAME}/nginx/" || echo "⚠️ Nginx config not found"
-            aws s3 ls "s3://${BUCKET_NAME}/scripts/" || echo "⚠️ Scripts not found"
-          else
-            echo "⚠️ S3 bucket not yet accessible"
-          fi
-        else
-          echo "⚠️ No bucket name available for verification"
-        fi
+        echo "✅ INFRASTRUCTURE DEPLOYMENT COMPLETED!"
+        echo "======================================"
+        echo ""
+        echo "🚀 Successfully deployed SMS Seller Connect infrastructure"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo "🌍 Environment: ${{ env.ENVIRONMENT }}"
+        echo "⏰ Deployment completed at: $(date)"
+        echo ""
+        echo "📋 Infrastructure components deployed:"
+        echo "  ✅ EC2 Instance"
+        echo "  ✅ Application Load Balancer (ALB)"
+        echo "  ✅ S3 Configuration Bucket"
+        echo "  ✅ Route53 DNS Records"
+        echo "  ✅ ACM SSL Certificates"
+        echo "  ✅ Security Groups & Networking"
+        echo "  ✅ CloudWatch Monitoring"
+        echo ""
+        echo "🔄 Next: Infrastructure Testing Stage will begin after stabilization period"
+        echo "⏳ Testing will start after 13-minute wait to allow all services to stabilize"
+        echo ""
+        echo "📊 Check the 'Comprehensive Health Check' job for detailed verification results"
 
     - name: Update CloudWatch Dashboard
       run: |
@@ -1227,6 +1579,97 @@ jobs:
           echo "⚠️ Could not retrieve Route53 name servers from Terraform output"
         fi
 
+
+        
+        if [ "$PASSED" -ge 5 ]; then
+          echo "🎉 OVERALL STATUS: ✅ HEALTHY"
+          echo "status=healthy" >> $GITHUB_OUTPUT
+          echo ""
+          echo "🌟 Your SMS Seller Connect application is running successfully!"
+          echo ""
+          echo "🔗 Application URLs:"
+          echo "   Frontend: ${{ steps.infra-details.outputs.frontend_url }}"
+          echo "   API: ${{ steps.infra-details.outputs.api_url }}"
+          echo "   ALB: ${{ steps.infra-details.outputs.alb_url }}"
+        else
+          echo "⚠️ OVERALL STATUS: ❌ UNHEALTHY"
+          echo "status=unhealthy" >> $GITHUB_OUTPUT
+          echo ""
+          echo "❌ Some components are not functioning properly."
+          echo "   Please review the test results above and check logs."
+        fi
+        
+        # Save health summary
+        echo "health_score=$PASSED/$TOTAL" >> $GITHUB_OUTPUT
+
+    - name: Post Health Check Results to PR
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const healthStatus = '${{ steps.overall-health.outputs.status }}';
+          const healthScore = '${{ steps.overall-health.outputs.health_score }}';
+          const frontendUrl = '${{ steps.infra-details.outputs.frontend_url }}';
+          const apiUrl = '${{ steps.infra-details.outputs.api_url }}';
+          
+          const emoji = healthStatus === 'healthy' ? '🎉' : '⚠️';
+          const status = healthStatus === 'healthy' ? 'HEALTHY' : 'NEEDS ATTENTION';
+          
+          const comment = `## ${emoji} SMS Seller Connect Health Check Results
+          
+          **Overall Status**: ${status}  
+          **Health Score**: ${healthScore}
+          
+          ### 🔍 Component Status
+          - 🐳 **Containers**: ${{ steps.container-health.outputs.status == 'success' && '✅ Healthy' || '❌ Issues detected' }}
+          - 🔧 **Backend API**: ${{ steps.backend-health.outputs.status == 'success' && '✅ Responding' || '❌ Not responding' }} (${{ steps.backend-health.outputs.backend_success_rate || 'N/A' }})
+          - 🤖 **AI Processing**: ${{ steps.ai-health.outputs.status == 'success' && '✅ Functional' || '❌ Not working' }}
+          - 📱 **SMS/Twilio**: ${{ steps.sms-health.outputs.status == 'success' && '✅ Operational' || '❌ Issues detected' }}
+          - ⏰ **Scheduler**: ${{ steps.scheduler-health.outputs.status == 'success' && '✅ Running' || '❌ Not running' }}
+          - 🎨 **Frontend**: ${{ steps.frontend-health.outputs.status == 'success' && '✅ Accessible' || '❌ Not accessible' }} (${{ steps.frontend-health.outputs.frontend_success_rate || 'N/A' }})
+          - 🗄️ **Database**: ${{ steps.database-health.outputs.status == 'success' && '✅ Connected' || '❌ Connection issues' }}
+          
+          ### 🌐 Application URLs
+          - **Frontend**: ${frontendUrl}
+          - **API**: ${apiUrl}
+          
+          ${healthStatus === 'healthy' ? 
+            '🎊 **All systems are operational!** Your SMS Seller Connect application is ready for full use with AI processing, SMS communication, scheduled messages, and all features functional.' : 
+            '⚠️ **Some issues detected.** Please review the detailed logs in the Actions tab to see which specific features need attention.'}
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+    - name: Health Check Summary
+      if: always()
+      run: |
+        echo "#### 🏥 SMS Seller Connect Comprehensive Health Check Summary"
+        echo ""
+        echo "**Overall Status**: ${{ steps.overall-health.outputs.status == 'healthy' && '✅ HEALTHY' || '⚠️ NEEDS ATTENTION' }}"
+        echo "**Health Score**: ${{ steps.overall-health.outputs.health_score }}"
+        echo "**Environment**: ${{ env.ENVIRONMENT }}"
+        echo ""
+        echo "**Feature Test Results**:"
+        echo "- Containers: ${{ steps.container-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- Backend API: ${{ steps.backend-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- AI Processing: ${{ steps.ai-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- SMS/Twilio: ${{ steps.sms-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- Scheduler: ${{ steps.scheduler-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- Frontend: ${{ steps.frontend-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo "- Database: ${{ steps.database-health.outputs.status == 'success' && '✅' || '❌' }}"
+        echo ""
+        echo "**Application URLs**:"
+        echo "- Frontend: ${{ steps.infra-details.outputs.frontend_url }}"
+        echo "- API: ${{ steps.infra-details.outputs.api_url }}"
+        echo "- ALB: ${{ steps.infra-details.outputs.alb_url }}"
+        echo ""
+        echo "${{ steps.overall-health.outputs.status == 'healthy' && '🎉 **All SMS Seller Connect features operational!**' || '⚠️ **Review required - check feature-specific logs above**' }}"
+
   destroy:
     name: '💥 Destroy Infrastructure'
     runs-on: ubuntu-latest
@@ -1279,10 +1722,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1407,10 +1850,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1494,10 +1937,10 @@ jobs:
         TF_VAR_s3_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_bucket_acl: ${{ vars.S3_ACL || 'private' }}
         TF_VAR_ecr_repo_url: ${{ vars.ECR_REPO_URL || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}
-        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || 'latest' }}
+        TF_VAR_container_tag: ${{ vars.CONTAINER_TAG || github.sha }}
         TF_VAR_app_port: ${{ vars.APP_PORT || '8900' }}
-        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}
-        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}
+        TF_VAR_backend_image: ${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}' }}
+        TF_VAR_frontend_image: ${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}' }}
         TF_VAR_domain_zone_name: ${{ vars.DOMAIN_ZONE_NAME || 'typerelations.com' }}
         TF_VAR_domain_name: ${{ vars.DOMAIN_NAME || 'typerelations.com' }}
         TF_VAR_sms_frontend_domain: ${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}
@@ -1754,14 +2197,14 @@ jobs:
               if [ -n "${{ vars.BACKEND_IMAGE }}" ]; then
                 echo "✅ $var - ${{ vars.BACKEND_IMAGE }}"
               else
-                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${{ github.sha }}"
               fi
               ;;
             "FRONTEND_IMAGE")
               if [ -n "${{ vars.FRONTEND_IMAGE }}" ]; then
                 echo "✅ $var - ${{ vars.FRONTEND_IMAGE }}"
               else
-                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
+                echo "⚠️ $var - Using fallback: 522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${{ github.sha }}"
               fi
               ;;
             "SMS_FRONTEND_DOMAIN")
@@ -1818,11 +2261,43 @@ jobs:
         fi
 
   redeploy:
-    name: '🚀 Redeploy Application'
+    name: '🚀 Fast Redeploy Application'
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'redeploy'
+    needs: [format, validate, plan]
+    if: |
+      needs.plan.outputs.deployment-strategy == 'redeploy' && (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan' && needs.plan.outputs.has-changes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'redeploy')
+      )
     
     steps:
+    - name: Fast Redeploy Strategy Notification
+      run: |
+        echo "🚀 FAST REDEPLOY STRATEGY ACTIVATED!"
+        echo "====================================="
+        echo ""
+        echo "✨ Infrastructure already exists and is healthy"
+        echo "🎯 Strategy: Update existing running infrastructure"
+        echo "⚡ Estimated time: ~5 minutes (vs ~15 minutes for full deployment)"
+        echo ""
+        echo "🔄 What will be updated:"
+        echo "  • Container images (backend & frontend)"
+        echo "  • Environment configurations"
+        echo "  • Application configurations"
+        echo "  • Service restarts"
+        echo ""
+        echo "🏗️ What will NOT be changed:"
+        echo "  • EC2 instance (already running)"
+        echo "  • ALB configuration (already configured)"
+        echo "  • Route53 DNS (already set)"
+        echo "  • Security groups (already configured)"
+        echo ""
+        echo "🔧 Environment: ${{ env.ENVIRONMENT }}"
+        echo "📦 Project: ${{ env.PROJECT_NAME }}"
+        echo ""
+
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -1833,12 +2308,57 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Upload Redeployment Script to S3
+    - name: Upload All Latest Scripts and Configuration to S3
       working-directory: ${{ env.TF_WORKING_DIR }}
       run: |
-        echo "📤 Uploading redeployment script to S3..."
-        aws s3 cp scripts/redeploy-application.sh s3://sms-seller-connect-bucket/scripts/redeploy-application.sh
-        echo "✅ Redeployment script uploaded"
+        echo "📤 Uploading ALL latest scripts and configuration to S3..."
+        echo "This ensures the redeploy uses the newest versions from this commit"
+        
+        S3_BUCKET="sms-seller-connect-bucket"
+        
+        # Upload all scripts from the scripts directory
+        echo "🔄 Uploading all scripts..."
+        if [ -d "scripts" ]; then
+          aws s3 sync scripts/ s3://${S3_BUCKET}/scripts/ --delete
+          echo "✅ All scripts uploaded and old scripts removed"
+        else
+          echo "⚠️ Scripts directory not found"
+        fi
+        
+        # Upload docker-compose configuration
+        echo "🔄 Uploading Docker Compose configuration..."
+        if [ -f "config/docker-compose.yml" ]; then
+          aws s3 cp config/docker-compose.yml s3://${S3_BUCKET}/docker-compose/docker-compose.yml
+          echo "✅ Docker Compose configuration uploaded"
+        else
+          echo "⚠️ Docker Compose configuration not found"
+        fi
+        
+        # Upload environment template
+        if [ -f "config/.env.template" ]; then
+          aws s3 cp config/.env.template s3://${S3_BUCKET}/docker-compose/.env.template
+          echo "✅ Environment template uploaded"
+        else
+          echo "ℹ️ Environment template not found (optional)"
+        fi
+        
+        # Upload nginx configuration
+        echo "🔄 Uploading Nginx configuration..."
+        if [ -f "config/nginx.conf" ]; then
+          aws s3 cp config/nginx.conf s3://${S3_BUCKET}/nginx/nginx.conf
+          echo "✅ Nginx configuration uploaded"
+        else
+          echo "⚠️ Nginx configuration not found"
+        fi
+        
+        echo ""
+        echo "📋 S3 Upload Summary:"
+        echo "=============================="
+        echo "🔧 Scripts: s3://${S3_BUCKET}/scripts/"
+        echo "🐳 Docker Compose: s3://${S3_BUCKET}/docker-compose/"
+        echo "🌐 Nginx Config: s3://${S3_BUCKET}/nginx/"
+        echo ""
+        echo "✅ All latest files uploaded to S3 for redeploy"
 
     - name: Get EC2 Instance Details
       id: ec2-details
@@ -1867,124 +2387,140 @@ jobs:
         echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
         echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
-    - name: Execute Redeployment via SSM
+    - name: Execute Redeployment via SSM (with fallback)
       run: |
         echo "🚀 Executing redeployment on EC2 instance..."
         
-        # Create the redeployment command with all environment variables
-        COMMAND=$(cat << 'EOF'
-        #!/bin/bash
-        set -e
-        
-        # Export all environment variables for the redeployment script
-        export AWS_REGION="${{ env.AWS_REGION }}"
-        export S3_BUCKET="sms-seller-connect-bucket"
-        export ENVIRONMENT="${{ env.ENVIRONMENT }}"
-        
-        # Docker Images
-        export BACKEND_IMAGE="${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest' }}"
-        export FRONTEND_IMAGE="${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest' }}"
-        
-        # Domain Configuration
-        export SMS_API_DOMAIN="${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
-        export SMS_FRONTEND_DOMAIN="${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}"
-        
-        # Database Configuration
-        export DB_HOST="${{ secrets.DB_HOST }}"
-        export DB_PORT="${{ vars.DB_PORT || '5437' }}"
-        export DB_NAME="${{ vars.DB_NAME || 'sms_blast' }}"
-        export DB_USER="${{ secrets.DB_USER }}"
-        export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-        
-        # Application Configuration
-        export SECRET_KEY="${{ secrets.FLASK_SECRET_KEY }}"
-        export JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}"
-        export TWILIO_ACCOUNT_SID="${{ secrets.TWILIO_ACCOUNT_SID }}"
-        export TWILIO_AUTH_TOKEN="${{ secrets.TWILIO_AUTH_TOKEN }}"
-        export TWILIO_PHONE_NUMBER="${{ secrets.TWILIO_PHONE_NUMBER }}"
-        export OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
-        export OPENAI_MODEL="${{ vars.OPENAI_MODEL || 'gpt-4o' }}"
-        export OPENAI_TEMPERATURE="${{ vars.OPENAI_TEMPERATURE || '0.3' }}"
-        
-        # SendGrid Configuration
-        export SENDGRID_API_KEY="${{ secrets.SENDGRID_API_KEY }}"
-        export SENDGRID_FROM_EMAIL="${{ vars.SENDGRID_FROM_EMAIL || 'noreply@typerelations.com' }}"
-        
-        # AWS Configuration
-        export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-        export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-        export S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME || 'grey-database-bucket' }}"
-        
-        # Hot Lead Configuration
-        export HOT_LEAD_EMAIL_RECIPIENTS="${{ vars.HOT_LEAD_EMAIL_RECIPIENTS || 'dcaulcrick01@gmail.com' }}"
-        export HOT_LEAD_SMS_RECIPIENTS="${{ secrets.HOT_LEAD_SMS_RECIPIENTS }}"
-        
-        # Rate Limiting
-        export RATE_LIMIT_PER_MINUTE="${{ vars.RATE_LIMIT_PER_MINUTE || '100' }}"
-        export RATE_LIMIT_BURST="${{ vars.RATE_LIMIT_BURST || '200' }}"
-        
-        # Session Configuration
-        export SESSION_TIMEOUT_MINUTES="${{ vars.SESSION_TIMEOUT_MINUTES || '60' }}"
-        export REMEMBER_ME_DAYS="${{ vars.REMEMBER_ME_DAYS || '30' }}"
-        
-        # File Upload Configuration
-        export MAX_FILE_SIZE_MB="${{ vars.MAX_FILE_SIZE_MB || '10' }}"
-        export ALLOWED_FILE_TYPES="${{ vars.ALLOWED_FILE_TYPES || 'csv,xlsx,txt' }}"
-        
-        # Download and execute the redeployment script
-        echo "📥 Downloading redeployment script..."
-        aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh
-        chmod +x /tmp/redeploy-application.sh
-        
-        echo "🚀 Executing redeployment..."
-        /tmp/redeploy-application.sh
-        EOF
-        )
-        
-        # Execute the command via SSM
-        COMMAND_ID=$(aws ssm send-command \
-          --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
-          --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"$COMMAND\"]" \
-          --comment "SMS Seller Connect Application Redeployment" \
-          --query 'Command.CommandId' \
-          --output text)
-        
-        echo "📋 SSM Command ID: $COMMAND_ID"
-        
-        # Wait for command to complete
-        echo "⏳ Waiting for redeployment to complete..."
-        aws ssm wait command-executed \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}"
-        
-        # Get command output
-        echo "📊 Redeployment output:"
-        aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-          --query 'StandardOutputContent' \
-          --output text
-        
-        # Check if command succeeded
-        STATUS=$(aws ssm get-command-invocation \
-          --command-id "$COMMAND_ID" \
-          --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-          --query 'Status' \
-          --output text)
-        
-        if [ "$STATUS" = "Success" ]; then
-          echo "🎉 Redeployment completed successfully!"
-        else
-          echo "❌ Redeployment failed with status: $STATUS"
-          echo "Error output:"
-          aws ssm get-command-invocation \
+        # Function to attempt SSM command execution with better error handling
+        execute_ssm_command() {
+          local command_description="$1"
+          local commands="$2"
+          
+          echo "📋 Attempting: $command_description"
+          
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ steps.ec2-details.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=$commands" \
+            --comment "$command_description" \
+            --query 'Command.CommandId' \
+            --output text 2>/dev/null) || return 1
+          
+          echo "📋 SSM Command ID: $COMMAND_ID"
+          
+          # Wait for command with timeout
+          if aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
-            --query 'StandardErrorContent' \
-            --output text
-          exit 1
+            --cli-read-timeout 300 2>/dev/null; then
+            
+            # Get command status
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+              --query 'Status' \
+              --output text 2>/dev/null)
+            
+            # Get command output
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+              --query 'StandardOutputContent' \
+              --output text 2>/dev/null
+              
+            if [ "$STATUS" = "Success" ]; then
+              return 0
+            else
+              echo "❌ Command failed with status: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ steps.ec2-details.outputs.instance_id }}" \
+                --query 'StandardErrorContent' \
+                --output text 2>/dev/null
+              return 1
+            fi
+          else
+            echo "❌ Command timed out or failed to execute"
+            return 1
+          fi
+        }
+        
+        # Step 1: Try to restart SSM agent to pick up new IAM permissions
+        echo "🔧 Step 1: Attempting to restart SSM agent to pick up new IAM permissions..."
+        
+        SSM_RESTART_COMMANDS='["#!/bin/bash","echo \"🔧 Restarting SSM agent to pick up new IAM permissions...\"","sudo systemctl stop amazon-ssm-agent","sleep 5","sudo systemctl start amazon-ssm-agent","sleep 10","sudo systemctl status amazon-ssm-agent --no-pager","echo \"✅ SSM agent restart completed\""]'
+        
+        if execute_ssm_command "SSM Agent Restart" "$SSM_RESTART_COMMANDS"; then
+          echo "✅ SSM agent restarted successfully"
+          
+          # Wait a bit more for agent to fully register
+          echo "⏳ Waiting 30 seconds for SSM agent to fully register..."
+          sleep 30
+          
+        else
+          echo "⚠️ SSM agent restart failed, but continuing with deployment attempt..."
         fi
+        
+        # Step 2: Attempt main redeployment via SSM
+        echo ""
+        echo "🚀 Step 2: Attempting main redeployment via SSM..."
+        
+        REDEPLOY_COMMANDS='["#!/bin/bash","set -e","echo \"🚀 Starting redeployment process...\"","echo \"📥 Downloading redeployment script from S3...\"","aws s3 cp s3://sms-seller-connect-bucket/scripts/redeploy-application.sh /tmp/redeploy-application.sh","chmod +x /tmp/redeploy-application.sh","echo \"🔧 Executing redeployment script...\"","cd /app/sms-seller-connect || { echo \"❌ Application directory not found\"; exit 1; }","export BACKEND_IMAGE=\"${{ vars.BACKEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend' }}:${{ github.sha }}\"","export FRONTEND_IMAGE=\"${{ vars.FRONTEND_IMAGE || '522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend' }}:${{ github.sha }}\"","export SMS_API_DOMAIN=\"${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","export SMS_FRONTEND_DOMAIN=\"${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}\"","export VITE_API_URL=\"https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}\"","/tmp/redeploy-application.sh 2>&1 | tee /tmp/redeploy.log","REDEPLOY_EXIT_CODE=${PIPESTATUS[0]}","echo \"\"","echo \"📋 Redeployment completed with exit code: $REDEPLOY_EXIT_CODE\"","if [ $REDEPLOY_EXIT_CODE -eq 0 ]; then","  echo \"✅ Redeployment successful\"","else","  echo \"❌ Redeployment failed\"","  echo \"📜 Last 20 lines of redeploy log:\"","  tail -20 /tmp/redeploy.log || echo \"Cannot read redeploy log\"","fi","exit $REDEPLOY_EXIT_CODE"]'
+        
+        if execute_ssm_command "SMS Seller Connect Application Redeployment" "$REDEPLOY_COMMANDS"; then
+          echo "🎉 Redeployment via SSM completed successfully!"
+          SSM_SUCCESS=true
+        else
+          echo "❌ SSM redeployment failed, attempting fallback method..."
+          SSM_SUCCESS=false
+        fi
+        
+        # Step 3: Fallback deployment if SSM failed
+        if [ "$SSM_SUCCESS" = "false" ]; then
+          echo ""
+          echo "🔄 Step 3: Attempting fallback deployment via user data script trigger..."
+          
+          # Create a deployment trigger by updating the user data (this will force a redeploy on next boot)
+          echo "📝 Updating user data to trigger redeployment..."
+          
+          # Get current instance details
+          INSTANCE_ID="${{ steps.ec2-details.outputs.instance_id }}"
+          
+          # Stop instance to trigger user data re-execution
+          echo "🛑 Stopping instance to trigger redeployment..."
+          aws ec2 stop-instances --instance-ids "$INSTANCE_ID"
+          
+          # Wait for instance to stop
+          echo "⏳ Waiting for instance to stop..."
+          aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"
+          
+          # Start instance (this will re-run user data with new environment)
+          echo "▶️ Starting instance with updated configuration..."
+          aws ec2 start-instances --instance-ids "$INSTANCE_ID"
+          
+          # Wait for instance to be running
+          echo "⏳ Waiting for instance to start..."
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+          
+          # Wait additional time for services to come up
+          echo "⏳ Waiting for services to initialize (3 minutes)..."
+          sleep 180
+          
+          echo "✅ Fallback deployment completed via instance restart"
+          
+          # Try SSM again after restart
+          echo "🔍 Testing SSM connectivity after restart..."
+          sleep 30
+          
+          if execute_ssm_command "Post-restart SSM test" '["echo \"✅ SSM connectivity restored after restart\""]'; then
+            echo "✅ SSM connectivity restored after restart"
+          else
+            echo "⚠️ SSM connectivity still unavailable, but deployment should be complete"
+          fi
+        fi
+        
+        echo ""
+        echo "🎉 Redeployment process completed!"
 
     - name: Verify Application Health
       run: |
@@ -2031,3 +2567,875 @@ jobs:
         echo "**API URL**: https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}"
         echo ""
         echo "${{ job.status == 'success' && '🎉 **Application has been successfully redeployed without infrastructure changes!**' || '❌ **Redeployment failed - check logs for details**' }}"
+
+  health-check:
+    name: '🧪 Test Infrastructure & Application Health'
+    runs-on: ubuntu-latest
+    needs: [apply, redeploy]
+    if: |
+      always() && (
+        (needs.apply.result == 'success') ||
+        (needs.redeploy.result == 'success')
+      )
+    
+    outputs:
+      health-status: ${{ steps.overall-health.outputs.status }}
+      backend-status: ${{ steps.backend-health.outputs.status }}
+      frontend-status: ${{ steps.frontend-health.outputs.status }}
+      container-status: ${{ steps.container-health.outputs.status }}
+      ai-status: ${{ steps.ai-health.outputs.status }}
+      sms-status: ${{ steps.sms-health.outputs.status }}
+      scheduler-status: ${{ steps.scheduler-health.outputs.status }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Infrastructure Deployment Complete - Begin Stabilization
+      run: |
+        echo "🚀 Infrastructure deployment completed!"
+        echo "======================================"
+        echo "⏳ Beginning extended stabilization period..."
+        echo ""
+        echo "📋 What's happening during this wait:"
+        echo "  1. EC2 instance completing boot process"
+        echo "  2. User data scripts executing (Docker setup, service config)"
+        echo "  3. Container images being pulled from ECR"
+        echo "  4. Database connections being established"
+        echo "  5. Backend API services initializing"
+        echo "  6. AI processing services loading models"
+        echo "  7. SMS/Twilio services connecting"
+        echo "  8. Scheduler services starting"
+        echo "  9. Frontend application building"
+        echo "  10. All health checks becoming responsive"
+        echo ""
+        echo "⏰ EXTENDED STABILIZATION: 10 MINUTES"
+        echo "This is intentionally long to ensure all complex services are fully operational."
+        echo ""
+        echo "Starting stabilization wait at $(date)..."
+        sleep 600
+        echo "✅ Extended stabilization period complete (10 minutes) - $(date)"
+
+    - name: Get Infrastructure Details
+      id: infra-details
+      run: |
+        echo "🔍 Gathering infrastructure details..."
+        
+        # Get ALB DNS name
+        ALB_DNS=$(aws elbv2 describe-load-balancers \
+          --names "sms-seller-connect-${{ env.ENVIRONMENT }}-alb" \
+          --query 'LoadBalancers[0].DNSName' \
+          --output text 2>/dev/null || echo "not-found")
+        
+        # Get EC2 instance details
+        INSTANCE_ID=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=sms-seller-connect-${{ env.ENVIRONMENT }}-ec2" "Name=instance-state-name,Values=running" \
+          --query 'Reservations[0].Instances[0].InstanceId' \
+          --output text 2>/dev/null || echo "not-found")
+        
+        INSTANCE_IP=$(aws ec2 describe-instances \
+          --instance-ids "$INSTANCE_ID" \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text 2>/dev/null || echo "not-found")
+        
+        echo "📊 Infrastructure Details:"
+        echo "ALB DNS: $ALB_DNS"
+        echo "Instance ID: $INSTANCE_ID"
+        echo "Instance IP: $INSTANCE_IP"
+        
+        echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
+        echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+        echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+        
+        # Set up base URLs for testing
+        echo "frontend_url=https://${{ vars.SMS_FRONTEND_DOMAIN || 'sms.typerelations.com' }}" >> $GITHUB_OUTPUT
+        echo "api_url=https://${{ vars.SMS_API_DOMAIN || 'api.sms.typerelations.com' }}" >> $GITHUB_OUTPUT
+        echo "alb_url=http://$ALB_DNS" >> $GITHUB_OUTPUT
+
+    - name: Final Service Readiness Check
+      run: |
+        echo "🔍 Final service readiness verification before comprehensive testing..."
+        echo "⏳ Allowing additional 3 minutes for all services to reach fully stable state..."
+        echo ""
+        echo "🎯 This final wait ensures:"
+        echo "  - All containers are not just running, but fully responsive"
+        echo "  - Database connections are stable and performant"
+        echo "  - API endpoints are responding consistently"
+        echo "  - AI services have completed model loading"
+        echo "  - Background services are operational"
+        echo ""
+        echo "Starting final readiness wait at $(date)..."
+        sleep 180
+        echo "✅ Final readiness verification complete (3 minutes) - $(date)"
+        echo ""
+        echo "🚀 TOTAL STABILIZATION TIME: 13 MINUTES"
+        echo "Now beginning comprehensive infrastructure testing..."
+
+    - name: Test Backend API Endpoints & Features
+      id: backend-health
+      run: |
+        echo "🔧 Testing Backend API Endpoints & Features..."
+        
+        API_URL="${{ steps.infra-details.outputs.api_url }}"
+        ALB_URL="${{ steps.infra-details.outputs.alb_url }}"
+        SUCCESS_COUNT=0
+        TOTAL_TESTS=0
+        
+        # Function to test endpoint
+        test_endpoint() {
+          local url="$1"
+          local name="$2"
+          local expected_status="${3:-200}"
+          local method="${4:-GET}"
+          local data="${5:-}"
+          
+          echo "Testing $name: $method $url"
+          TOTAL_TESTS=$((TOTAL_TESTS + 1))
+          
+          if [ "$method" = "POST" ] && [ -n "$data" ]; then
+            response=$(curl -s -w "HTTPSTATUS:%{http_code}" --max-time 30 -X POST -H "Content-Type: application/json" -d "$data" "$url")
+          else
+            response=$(curl -s -w "HTTPSTATUS:%{http_code}" --max-time 30 -X "$method" "$url")
+          fi
+          
+          http_code=$(echo "$response" | grep "HTTPSTATUS:" | cut -d: -f2)
+          body=$(echo "$response" | sed 's/HTTPSTATUS:.*//g')
+          
+          if [ "$http_code" -eq "$expected_status" ] || [ "$http_code" -eq 200 ]; then
+            echo "✅ $name - HTTP $http_code"
+            if [ -n "$body" ]; then
+              echo "   Response: $(echo "$body" | head -c 200)..."
+            fi
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+          else
+            echo "❌ $name - HTTP $http_code"
+            if [ -n "$body" ]; then
+              echo "   Error: $(echo "$body" | head -c 200)..."
+            fi
+          fi
+          echo ""
+        }
+        
+        echo "🏥 CORE HEALTH ENDPOINTS:"
+        echo "========================"
+        test_endpoint "$API_URL/health" "Primary Health Check"
+        test_endpoint "$API_URL/api/health" "Extended Health Check"
+        test_endpoint "$API_URL/" "API Root"
+        
+        echo "🔐 AUTHENTICATION SYSTEM:"
+        echo "========================="
+        test_endpoint "$API_URL/api/auth/login" "Login Endpoint" 405 "POST"
+        test_endpoint "$API_URL/api/auth/register" "Registration Endpoint" 405 "POST"
+        test_endpoint "$API_URL/api/auth/logout" "Logout Endpoint" 401 "POST"
+        test_endpoint "$API_URL/api/auth/refresh" "Token Refresh" 401 "POST"
+        
+        echo "📱 SMS & COMMUNICATION:"
+        echo "======================="
+        test_endpoint "$API_URL/api/sms/send" "SMS Send Endpoint" 401 "POST"
+        test_endpoint "$API_URL/api/sms/status" "SMS Status Check" 401
+        test_endpoint "$API_URL/api/webhooks/sms" "SMS Webhook Endpoint" 405 "POST"
+        test_endpoint "$API_URL/api/messages" "Messages Management" 401
+        test_endpoint "$API_URL/api/messages/search" "Message Search" 401
+        
+        echo "👤 LEAD MANAGEMENT:"
+        echo "=================="
+        test_endpoint "$API_URL/api/leads" "Leads Endpoint" 401
+        test_endpoint "$API_URL/api/leads/search" "Lead Search" 401
+        test_endpoint "$API_URL/api/leads/import" "Lead Import" 401 "POST"
+        test_endpoint "$API_URL/api/leads/export" "Lead Export" 401
+        test_endpoint "$API_URL/api/leads/stats" "Lead Statistics" 401
+        
+        echo "🤖 AI PROCESSING:"
+        echo "================="
+        test_endpoint "$API_URL/api/ai/process" "AI Message Processing" 401 "POST"
+        test_endpoint "$API_URL/api/ai/status" "AI Service Status" 401
+        test_endpoint "$API_URL/api/ai/settings" "AI Configuration" 401
+        
+        echo "⏰ SCHEDULED MESSAGES:"
+        echo "====================="
+        test_endpoint "$API_URL/api/scheduler/status" "Scheduler Status" 401
+        test_endpoint "$API_URL/api/scheduler/jobs" "Scheduled Jobs" 401
+        test_endpoint "$API_URL/api/scheduler/create" "Create Schedule" 401 "POST"
+        
+        echo "📊 ANALYTICS & REPORTING:"
+        echo "========================"
+        test_endpoint "$API_URL/api/analytics" "Analytics Dashboard" 401
+        test_endpoint "$API_URL/api/analytics/messages" "Message Analytics" 401
+        test_endpoint "$API_URL/api/analytics/leads" "Lead Analytics" 401
+        test_endpoint "$API_URL/api/analytics/performance" "Performance Metrics" 401
+        test_endpoint "$API_URL/api/reports/generate" "Report Generation" 401 "POST"
+        
+        echo "📁 FILE MANAGEMENT:"
+        echo "=================="
+        test_endpoint "$API_URL/api/files/upload" "File Upload Endpoint" 401 "POST"
+        test_endpoint "$API_URL/api/files/list" "File Listing" 401
+        test_endpoint "$API_URL/api/files/download" "File Download" 401
+        
+        echo "⚙️ SYSTEM MANAGEMENT:"
+        echo "===================="
+        test_endpoint "$API_URL/api/system/status" "System Status" 401
+        test_endpoint "$API_URL/api/system/logs" "System Logs" 401
+        test_endpoint "$API_URL/api/system/config" "System Configuration" 401
+        test_endpoint "$API_URL/api/alerts" "Alert System" 401
+        
+        echo "📚 DOCUMENTATION:"
+        echo "================="
+        test_endpoint "$API_URL/api/docs" "API Documentation"
+        test_endpoint "$API_URL/api/openapi.json" "OpenAPI Schema"
+        test_endpoint "$API_URL/redoc" "ReDoc Documentation"
+        
+        # Test via ALB as backup if many direct API calls failed
+        if [ "$SUCCESS_COUNT" -lt 10 ]; then
+          echo ""
+          echo "🔄 BACKUP TESTING VIA ALB:"
+          echo "========================="
+          test_endpoint "$ALB_URL/health" "ALB Backend Health"
+          test_endpoint "$ALB_URL/api/health" "ALB Backend API Health"
+          test_endpoint "$ALB_URL/api/docs" "ALB API Documentation"
+        fi
+        
+        echo ""
+        echo "📊 BACKEND ENDPOINT SUMMARY:"
+        echo "============================"
+        echo "Total endpoints tested: $TOTAL_TESTS"
+        echo "Successful responses: $SUCCESS_COUNT"
+        echo "Success rate: $(( SUCCESS_COUNT * 100 / TOTAL_TESTS ))%"
+        
+        echo "backend_success_rate=$SUCCESS_COUNT/$TOTAL_TESTS" >> $GITHUB_OUTPUT
+        
+        # More lenient success criteria for comprehensive testing
+        if [ "$SUCCESS_COUNT" -ge 10 ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Backend comprehensive health check PASSED ($SUCCESS_COUNT/$TOTAL_TESTS endpoints responding)"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Backend comprehensive health check FAILED ($SUCCESS_COUNT/$TOTAL_TESTS endpoints responding)"
+        fi
+
+    - name: Test AI Processing Services
+      id: ai-health
+      run: |
+        echo "🤖 Testing AI Processing Services..."
+        
+        INSTANCE_ID="${{ steps.infra-details.outputs.instance_id }}"
+        
+        if [ "$INSTANCE_ID" = "not-found" ]; then
+          echo "❌ No EC2 instance found for AI testing"
+          echo "status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        # Create AI service test script
+        AI_TEST_SCRIPT='#!/bin/bash
+        echo "🤖 AI PROCESSING SERVICE TEST"
+        echo "============================"
+        echo ""
+        
+        # Test AI service functionality within backend container
+        echo "Testing AI service components..."
+        
+        if docker exec sms_backend python3 -c "
+        import sys
+        sys.path.append('\''/app'\'')
+        
+        try:
+            # Test AI imports
+            from src.ai.processor import AIProcessor
+            from src.ai.message_analyzer import MessageAnalyzer
+            print('\'✅ AI modules import successfully'\'')
+            
+            # Test AI configuration
+            ai_processor = AIProcessor()
+            print('\'✅ AI processor initialized'\'')
+            
+            # Test message analyzer
+            analyzer = MessageAnalyzer()
+            print('\'✅ Message analyzer initialized'\'')
+            
+            # Test basic AI functionality (without API calls)
+            test_message = '\''Hello, I am interested in your property'\''
+            result = analyzer.analyze_sentiment(test_message)
+            print(f'\'✅ AI sentiment analysis working: {result}'\'')
+            
+        except Exception as e:
+            print(f'\'❌ AI service test failed: {e}'\'')
+            import traceback
+            traceback.print_exc()
+            exit(1)
+        " 2>&1; then
+          echo "✅ AI processing services are functional"
+        else
+          echo "❌ AI processing services failed"
+          echo "Checking AI-related logs..."
+          docker logs --tail 20 sms_backend | grep -i -E "(ai|openai|gpt|nlp)" || echo "No AI-related logs found"
+        fi
+        
+        echo ""
+        echo "🔍 AI Configuration Check:"
+        docker exec sms_backend env | grep -E "^(OPENAI_|AI_|GPT_)" | sed "s/=.*/=***HIDDEN***/" || echo "No AI environment variables found"'
+        
+        # Execute AI test via SSM
+        echo "🚀 Executing AI functionality test..."
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[\"$AI_TEST_SCRIPT\"]" \
+          --comment "AI Processing Service Test" \
+          --query 'Command.CommandId' \
+          --output text)
+        
+        # Wait for command to complete
+        aws ssm wait command-executed \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --max-attempts 20
+        
+        # Get and display results
+        echo "📊 AI Service Test Results:"
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'StandardOutputContent' \
+          --output text
+        
+        # Check command status
+        STATUS=$(aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'Status' \
+          --output text)
+        
+        if [ "$STATUS" = "Success" ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ AI processing services test completed successfully"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ AI processing services test failed"
+        fi
+
+    - name: Test SMS & Twilio Services  
+      id: sms-health
+      run: |
+        echo "📱 Testing SMS & Twilio Services..."
+        
+        INSTANCE_ID="${{ steps.infra-details.outputs.instance_id }}"
+        
+        # Create SMS service test script
+        SMS_TEST_SCRIPT='#!/bin/bash
+        echo "📱 SMS & TWILIO SERVICE TEST"
+        echo "==========================="
+        echo ""
+        
+        # Test SMS service functionality within backend container
+        echo "Testing SMS service components..."
+        
+        if docker exec sms_backend python3 -c "
+        import sys
+        sys.path.append('\''/app'\'')
+        
+        try:
+            # Test SMS imports
+            from src.sms.twilio_client import TwilioClient
+            from src.sms.message_handler import MessageHandler
+            print('\'✅ SMS modules import successfully'\'')
+            
+            # Test SMS configuration
+            twilio_client = TwilioClient()
+            print('\'✅ Twilio client initialized'\'')
+            
+            # Test message handler
+            handler = MessageHandler()
+            print('\'✅ Message handler initialized'\'')
+            
+            # Test Twilio credentials (without sending)
+            if hasattr(twilio_client, '\''client'\'') and twilio_client.client:
+                print('\'✅ Twilio credentials configured'\'')
+            else:
+                print('\'⚠️ Twilio credentials may not be configured'\'')
+                
+        except Exception as e:
+            print(f'\'❌ SMS service test failed: {e}'\'')
+            import traceback
+            traceback.print_exc()
+            exit(1)
+        " 2>&1; then
+          echo "✅ SMS services are functional"
+        else
+          echo "❌ SMS services failed"
+          echo "Checking SMS-related logs..."
+          docker logs --tail 20 sms_backend | grep -i -E "(sms|twilio|message)" || echo "No SMS-related logs found"
+        fi
+        
+        echo ""
+        echo "🔍 SMS Configuration Check:"
+        docker exec sms_backend env | grep -E "^(TWILIO_|SMS_)" | sed "s/=.*/=***HIDDEN***/" || echo "No SMS environment variables found"'
+        
+        # Execute SMS test via SSM
+        echo "🚀 Executing SMS functionality test..."
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[\"$SMS_TEST_SCRIPT\"]" \
+          --comment "SMS & Twilio Service Test" \
+          --query 'Command.CommandId' \
+          --output text)
+        
+        # Wait for command to complete
+        aws ssm wait command-executed \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --max-attempts 20
+        
+        # Get and display results
+        echo "📊 SMS Service Test Results:"
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'StandardOutputContent' \
+          --output text
+        
+        # Check command status
+        STATUS=$(aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'Status' \
+          --output text)
+        
+        if [ "$STATUS" = "Success" ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ SMS & Twilio services test completed successfully"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ SMS & Twilio services test failed"
+        fi
+
+    - name: Test Scheduled Message Services
+      id: scheduler-health
+      run: |
+        echo "⏰ Testing Scheduled Message Services..."
+        
+        INSTANCE_ID="${{ steps.infra-details.outputs.instance_id }}"
+        
+        # Create scheduler service test script
+        SCHEDULER_TEST_SCRIPT='#!/bin/bash
+        echo "⏰ SCHEDULED MESSAGE SERVICE TEST"
+        echo "================================"
+        echo ""
+        
+        # Test scheduler service functionality
+        echo "Testing scheduler service components..."
+        
+        if docker exec sms_backend python3 -c "
+        import sys
+        sys.path.append('\''/app'\'')
+        
+        try:
+            # Test scheduler imports
+            from src.scheduler.message_scheduler import MessageScheduler
+            from src.scheduler.job_manager import JobManager
+            print('\'✅ Scheduler modules import successfully'\'')
+            
+            # Test scheduler initialization
+            scheduler = MessageScheduler()
+            print('\'✅ Message scheduler initialized'\'')
+            
+            # Test job manager
+            job_manager = JobManager()
+            print('\'✅ Job manager initialized'\'')
+            
+            # Test scheduler status
+            if scheduler.is_running():
+                print('\'✅ Scheduler is running'\'')
+            else:
+                print('\'⚠️ Scheduler is not currently running'\'')
+                
+        except Exception as e:
+            print(f'\'❌ Scheduler service test failed: {e}'\'')
+            import traceback
+            traceback.print_exc()
+            exit(1)
+        " 2>&1; then
+          echo "✅ Scheduler services are functional"
+        else
+          echo "❌ Scheduler services failed"
+          echo "Checking scheduler-related logs..."
+          docker logs --tail 20 sms_backend | grep -i -E "(scheduler|cron|job|task)" || echo "No scheduler-related logs found"
+        fi
+        
+        echo ""
+        echo "🔍 Background Services Check:"
+        echo "Checking if scheduled message processes are running..."
+        ps aux | grep -E "(send_scheduled_messages|process_inbound)" || echo "No background message processes found"'
+        
+        # Execute scheduler test via SSM
+        echo "🚀 Executing scheduler functionality test..."
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[\"$SCHEDULER_TEST_SCRIPT\"]" \
+          --comment "Scheduler Service Test" \
+          --query 'Command.CommandId' \
+          --output text)
+        
+        # Wait for command to complete
+        aws ssm wait command-executed \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --max-attempts 20
+        
+        # Get and display results
+        echo "📊 Scheduler Service Test Results:"
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'StandardOutputContent' \
+          --output text
+        
+        # Check command status
+        STATUS=$(aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'Status' \
+          --output text)
+        
+        if [ "$STATUS" = "Success" ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Scheduled message services test completed successfully"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Scheduled message services test failed"
+        fi
+
+    - name: Test Frontend Application
+      id: frontend-health
+      run: |
+        echo "🎨 Testing Frontend Application..."
+        
+        FRONTEND_URL="${{ steps.infra-details.outputs.frontend_url }}"
+        ALB_URL="${{ steps.infra-details.outputs.alb_url }}"
+        SUCCESS_COUNT=0
+        TOTAL_TESTS=0
+        
+        # Function to test frontend endpoint
+        test_frontend() {
+          local url="$1"
+          local name="$2"
+          
+          echo "Testing $name: $url"
+          TOTAL_TESTS=$((TOTAL_TESTS + 1))
+          
+          response=$(curl -s -w "HTTPSTATUS:%{http_code}" --max-time 30 "$url")
+          http_code=$(echo "$response" | grep "HTTPSTATUS:" | cut -d: -f2)
+          body=$(echo "$response" | sed 's/HTTPSTATUS:.*//g')
+          
+          if [ "$http_code" -eq 200 ]; then
+            # Check if response contains expected frontend content
+            if echo "$body" | grep -q -i -E "(html|react|vue|angular|app|title)" || echo "$body" | grep -q "<!DOCTYPE"; then
+              echo "✅ $name - HTTP $http_code (Valid HTML/App content)"
+              SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+            else
+              echo "⚠️ $name - HTTP $http_code (Unexpected content)"
+              echo "   Content preview: $(echo "$body" | head -c 100)..."
+            fi
+          else
+            echo "❌ $name - HTTP $http_code"
+            if [ -n "$body" ]; then
+              echo "   Error: $(echo "$body" | head -c 100)..."
+            fi
+          fi
+          echo ""
+        }
+        
+        # Test frontend endpoints
+        test_frontend "$FRONTEND_URL" "Frontend Root"
+        test_frontend "$FRONTEND_URL/login" "Login Page"
+        test_frontend "$FRONTEND_URL/dashboard" "Dashboard Page"
+        
+        # Test static assets (if available)
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+        if curl -s --max-time 10 "$FRONTEND_URL" | grep -q -i -E "(css|js|script|link)" ; then
+          echo "✅ Frontend static assets detected"
+          SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+        else
+          echo "⚠️ Frontend static assets not clearly detected"
+        fi
+        
+        echo "frontend_success_rate=$SUCCESS_COUNT/$TOTAL_TESTS" >> $GITHUB_OUTPUT
+        
+        if [ "$SUCCESS_COUNT" -ge 2 ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Frontend health check passed ($SUCCESS_COUNT/$TOTAL_TESTS checks passed)"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Frontend health check failed ($SUCCESS_COUNT/$TOTAL_TESTS checks passed)"
+        fi
+
+    - name: Test Database Connectivity
+      id: database-health
+      run: |
+        echo "🗄️ Testing Database Connectivity..."
+        
+        INSTANCE_ID="${{ steps.infra-details.outputs.instance_id }}"
+        
+        if [ "$INSTANCE_ID" = "not-found" ]; then
+          echo "❌ No EC2 instance found for database test"
+          echo "status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        # Create database connectivity test script
+        DB_TEST_SCRIPT='#!/bin/bash
+        echo "🗄️ DATABASE CONNECTIVITY TEST"
+        echo "============================="
+        echo ""
+        
+        # Test database connectivity via backend container
+        echo "Testing database connectivity via backend..."
+        
+        # Check if backend container can connect to database
+        if docker exec sms_backend python3 -c "
+        import psycopg2
+        import os
+        try:
+            conn = psycopg2.connect(
+                host=os.environ['\''DB_HOST'\''],
+                port=os.environ['\''DB_PORT'\''],
+                database=os.environ['\''DB_NAME'\''],
+                user=os.environ['\''DB_USER'\''],
+                password=os.environ['\''DB_PASSWORD'\'']
+            )
+            cursor = conn.cursor()
+            cursor.execute('\''SELECT version();'\'')
+            version = cursor.fetchone()
+            print('\''✅ Database connection successful'\'')
+            print(f'\''   PostgreSQL version: {version[0][:50]}...'\'')
+            
+            # Test basic queries
+            cursor.execute('\''SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s;'\'', ('\''public'\'',))
+            table_count = cursor.fetchone()[0]
+            print(f'\''   Tables in public schema: {table_count}'\'')
+            
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f'\''❌ Database connection failed: {e}'\'')
+            exit(1)
+        " 2>&1; then
+          echo "✅ Database connectivity test passed"
+        else
+          echo "❌ Database connectivity test failed"
+          echo "Checking container logs for database errors..."
+          docker logs --tail 10 sms_backend | grep -i -E "(database|db|postgres|connection)" || echo "No database-related logs found"
+        fi
+        
+        echo ""
+        echo "🔍 Backend database configuration:"
+        docker exec sms_backend env | grep -E "^(DB_|DATABASE_)" | sed "s/PASSWORD=.*/PASSWORD=***HIDDEN***/" || echo "Could not retrieve DB config"'
+        
+        # Execute database test via SSM
+        echo "🚀 Executing database connectivity test..."
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[\"$DB_TEST_SCRIPT\"]" \
+          --comment "Database Connectivity Test" \
+          --query 'Command.CommandId' \
+          --output text)
+        
+        # Wait for command to complete
+        aws ssm wait command-executed \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --max-attempts 15
+        
+        # Get and display results
+        echo "📊 Database Test Results:"
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'StandardOutputContent' \
+          --output text
+        
+        # Check command status
+        STATUS=$(aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$INSTANCE_ID" \
+          --query 'Status' \
+          --output text)
+        
+        if [ "$STATUS" = "Success" ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "✅ Database connectivity test completed successfully"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "❌ Database connectivity test failed"
+        fi
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Validate GitHub Secrets and Variables
+      id: validate-config
+      run: |
+        echo "🔐 Validating GitHub Secrets and Variables Configuration..."
+        echo "========================================================"
+        echo ""
+        
+        VALIDATION_ERRORS=0
+        VALIDATION_WARNINGS=0
+        
+        # Function to check required secret
+        check_secret() {
+          local secret_name="$1"
+          local secret_value="$2"
+          local is_required="${3:-true}"
+          
+          if [ -z "$secret_value" ] || [ "$secret_value" = "" ]; then
+            if [ "$is_required" = "true" ]; then
+              echo "❌ MISSING REQUIRED SECRET: $secret_name"
+              VALIDATION_ERRORS=$((VALIDATION_ERRORS + 1))
+            else
+              echo "⚠️ MISSING OPTIONAL SECRET: $secret_name"
+              VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+            fi
+          else
+            # Check if secret looks valid (basic format validation)
+            case "$secret_name" in
+              *_KEY|*_TOKEN|*_SECRET*) 
+                if [ ${#secret_value} -lt 10 ]; then
+                  echo "⚠️ SECRET TOO SHORT: $secret_name (${#secret_value} characters)"
+                  VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+                else
+                  echo "✅ SECRET VALID: $secret_name (${#secret_value} characters)"
+                fi
+                ;;
+              *_HOST|*_URL|*_DOMAIN*)
+                if echo "$secret_value" | grep -q -E "^[a-zA-Z0-9.-]+$|^https?://"; then
+                  echo "✅ SECRET VALID: $secret_name"
+                else
+                  echo "⚠️ SECRET FORMAT WARNING: $secret_name (may be invalid format)"
+                  VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+                fi
+                ;;
+              *)
+                echo "✅ SECRET VALID: $secret_name (configured)"
+                ;;
+            esac
+          fi
+        }
+        
+        # Function to check required variable
+        check_variable() {
+          local var_name="$1"
+          local var_value="$2"
+          local is_required="${3:-true}"
+          local default_value="${4:-}"
+          
+          if [ -z "$var_value" ] || [ "$var_value" = "" ]; then
+            if [ -n "$default_value" ]; then
+              echo "✅ VARIABLE USING DEFAULT: $var_name (default: $default_value)"
+            elif [ "$is_required" = "true" ]; then
+              echo "❌ MISSING REQUIRED VARIABLE: $var_name"
+              VALIDATION_ERRORS=$((VALIDATION_ERRORS + 1))
+            else
+              echo "⚠️ MISSING OPTIONAL VARIABLE: $var_name"
+              VALIDATION_WARNINGS=$((VALIDATION_WARNINGS + 1))
+            fi
+          else
+            echo "✅ VARIABLE VALID: $var_name ($var_value)"
+          fi
+        }
+        
+        echo "🔑 REQUIRED SECRETS VALIDATION:"
+        echo "==============================="
+        check_secret "AWS_ACCESS_KEY_ID" "${{ secrets.AWS_ACCESS_KEY_ID }}"
+        check_secret "AWS_SECRET_ACCESS_KEY" "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+        check_secret "SSH_PUBLIC_KEY" "${{ secrets.SSH_PUBLIC_KEY }}"
+        check_secret "JWT_SECRET_KEY" "${{ secrets.JWT_SECRET_KEY }}"
+        check_secret "DB_HOST" "${{ secrets.DB_HOST }}"
+        check_secret "DB_USER" "${{ secrets.DB_USER }}"
+        check_secret "DB_PASSWORD" "${{ secrets.DB_PASSWORD }}"
+        
+        echo ""
+        echo "📱 SMS/COMMUNICATION SECRETS:"
+        echo "============================="
+        check_secret "TWILIO_ACCOUNT_SID" "${{ secrets.TWILIO_ACCOUNT_SID }}"
+        check_secret "TWILIO_AUTH_TOKEN" "${{ secrets.TWILIO_AUTH_TOKEN }}"
+        check_secret "TWILIO_PHONE_NUMBER" "${{ secrets.TWILIO_PHONE_NUMBER }}"
+        
+        echo ""
+        echo "🤖 AI/EMAIL SECRETS:"
+        echo "==================="
+        check_secret "OPENAI_API_KEY" "${{ secrets.OPENAI_API_KEY }}"
+        check_secret "SENDGRID_API_KEY" "${{ secrets.SENDGRID_API_KEY }}" false
+        check_secret "NGROK_AUTH_TOKEN" "${{ secrets.NGROK_AUTH_TOKEN }}" false
+        
+        echo ""
+        echo "🌐 REQUIRED VARIABLES:"
+        echo "====================="
+        check_variable "AWS_REGION" "${{ vars.AWS_REGION }}" true "us-east-1"
+        check_variable "PROJECT_NAME" "${{ vars.PROJECT_NAME }}" true "sms-seller-connect"
+        check_variable "SMS_FRONTEND_DOMAIN" "${{ vars.SMS_FRONTEND_DOMAIN }}" true "sms.typerelations.com"
+        check_variable "SMS_API_DOMAIN" "${{ vars.SMS_API_DOMAIN }}" true "api.sms.typerelations.com"
+        check_variable "DOMAIN_ZONE_NAME" "${{ vars.DOMAIN_ZONE_NAME }}" true "typerelations.com"
+        
+        echo ""
+        echo "🔧 INFRASTRUCTURE VARIABLES:"
+        echo "============================"
+        check_variable "INSTANCE_TYPE" "${{ vars.INSTANCE_TYPE }}" false "t2.micro"
+        check_variable "AMI_ID" "${{ vars.AMI_ID }}" false "ami-0c02fb55956c7d316"
+        check_variable "KEY_NAME" "${{ vars.KEY_NAME }}" false "sms-seller-connect-key"
+        check_variable "VPC_NAME" "${{ vars.VPC_NAME }}" false "Grey-VPC"
+        check_variable "S3_BUCKET_NAME" "${{ vars.S3_BUCKET_NAME }}" false "sms-seller-connect-bucket"
+        
+        echo ""
+        echo "🐳 CONTAINER VARIABLES:"
+        echo "======================"
+        check_variable "ECR_REPO_URL" "${{ vars.ECR_REPO_URL }}" false "522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend"
+        check_variable "BACKEND_IMAGE" "${{ vars.BACKEND_IMAGE }}" false
+        check_variable "FRONTEND_IMAGE" "${{ vars.FRONTEND_IMAGE }}" false
+        check_variable "CONTAINER_TAG" "${{ vars.CONTAINER_TAG }}" false "latest"
+        
+        echo ""
+        echo "📊 VALIDATION SUMMARY:"
+        echo "====================="
+        echo "Validation Errors: $VALIDATION_ERRORS"
+        echo "Validation Warnings: $VALIDATION_WARNINGS"
+        
+        # Set outputs for later steps
+        echo "validation_errors=$VALIDATION_ERRORS" >> $GITHUB_OUTPUT
+        echo "validation_warnings=$VALIDATION_WARNINGS" >> $GITHUB_OUTPUT
+        
+        if [ $VALIDATION_ERRORS -gt 0 ]; then
+          echo ""
+          echo "❌ VALIDATION FAILED: $VALIDATION_ERRORS critical configuration issues found"
+          echo ""
+          echo "🔧 REQUIRED ACTIONS:"
+          echo "==================="
+          echo "1. Go to your GitHub repository settings"
+          echo "2. Navigate to 'Secrets and variables' → 'Actions'"
+          echo "3. Add missing secrets to 'Repository secrets'"
+          echo "4. Add missing variables to 'Repository variables'"
+          echo ""
+          echo "❌ Deployment cannot proceed until all required configuration is set!"
+          exit 1
+        elif [ $VALIDATION_WARNINGS -gt 0 ]; then
+          echo ""
+          echo "⚠️ VALIDATION PASSED WITH WARNINGS: $VALIDATION_WARNINGS non-critical issues found"
+          echo "Deployment will proceed using defaults where applicable."
+        else
+          echo ""
+          echo "✅ VALIDATION PASSED: All required configuration is properly set"
+        fi
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}

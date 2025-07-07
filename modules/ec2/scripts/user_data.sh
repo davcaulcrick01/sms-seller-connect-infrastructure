@@ -181,7 +181,7 @@ setup_docker_compose() {
     log_to_cloudwatch "INFO" "Downloading Docker Compose configuration from S3..."
     sudo aws s3 cp s3://${S3_BUCKET}/docker-compose/docker-compose.yml ./docker-compose.yml
     sudo aws s3 cp s3://${S3_BUCKET}/docker-compose/.env.template ./.env.template
-    sudo aws s3 cp s3://${S3_BUCKET}/nginx/nginx.conf ./nginx.conf
+    sudo aws s3 cp s3://${S3_BUCKET}/nginx/nginx.conf ./nginx.conf.template
     sudo aws s3 cp s3://${S3_BUCKET}/scripts/health-check.sh ./health-check.sh
     sudo aws s3 cp s3://${S3_BUCKET}/scripts/health-check-server.py ./health-check-server.py
     
@@ -225,6 +225,10 @@ setup_docker_compose() {
     log_to_cloudwatch "INFO" "Creating environment file with configuration..."
     envsubst < .env.template > .env
     
+    # CRITICAL: Substitute variables in nginx configuration
+    log_to_cloudwatch "INFO" "Substituting variables in nginx configuration..."
+    envsubst '${SMS_API_DOMAIN} ${SMS_FRONTEND_DOMAIN}' < nginx.conf.template > nginx.conf
+    
     # Set proper permissions
     sudo chown -R ec2-user:ec2-user /app/sms-seller-connect
     sudo chmod 600 .env  # Secure the environment file
@@ -249,14 +253,23 @@ start_services() {
     log_to_cloudwatch "INFO" "DEBUG: SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}"
     
     # Set fallback values if variables are empty
+    # Note: These should normally be set by Terraform with commit-specific tags
     if [ -z "${BACKEND_IMAGE}" ]; then
-        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:latest"
-        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using fallback: ${BACKEND_IMAGE}"
+        # Try to get the latest tag from ECR instead of using :latest
+        LATEST_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-backend \
+          --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+          --output text 2>/dev/null || echo "latest")
+        BACKEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-backend:${LATEST_TAG}"
+        log_to_cloudwatch "WARN" "BACKEND_IMAGE was empty, using latest available tag: ${BACKEND_IMAGE}"
     fi
     
     if [ -z "${FRONTEND_IMAGE}" ]; then
-        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:latest"
-        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using fallback: ${FRONTEND_IMAGE}"
+        # Try to get the latest tag from ECR instead of using :latest
+        LATEST_TAG=$(aws ecr describe-images --repository-name sms-wholesaling-frontend \
+          --region us-east-1 --query 'imageDetails | sort_by(@, &imagePushedAt) | [-1].imageTags[0]' \
+          --output text 2>/dev/null || echo "latest")
+        FRONTEND_IMAGE="522814698925.dkr.ecr.us-east-1.amazonaws.com/sms-wholesaling-frontend:${LATEST_TAG}"
+        log_to_cloudwatch "WARN" "FRONTEND_IMAGE was empty, using latest available tag: ${FRONTEND_IMAGE}"
     fi
     
     # Create .env file for Docker Compose with all variables
@@ -266,6 +279,7 @@ BACKEND_IMAGE=${BACKEND_IMAGE}
 FRONTEND_IMAGE=${FRONTEND_IMAGE}
 SMS_API_DOMAIN=${SMS_API_DOMAIN}
 SMS_FRONTEND_DOMAIN=${SMS_FRONTEND_DOMAIN}
+VITE_API_URL=https://${SMS_API_DOMAIN}
 DB_HOST=${DB_HOST}
 DB_PORT=${DB_PORT}
 DB_NAME=${DB_NAME}
@@ -413,5 +427,5 @@ main() {
     echo "Setup completed successfully at $(date)" >> "$LOCK_FILE"
 }
 
-# Run main function
+# Run main functions
 main
